@@ -1,7 +1,9 @@
 "use client";
 
-import { FileSearch, LockKeyhole, Upload } from "lucide-react";
+import { ArrowUp, FileSearch, FileText, LockKeyhole, Plus, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
+
+const CAPABILITIES = ["Peer review", "Citation check", "Safe revision", "PDF export"];
 
 export function UploadSurface({
   busyLabel,
@@ -22,15 +24,17 @@ export function UploadSurface({
   return (
     <div className="upload-page">
       <div className="upload-intro">
-        <div className="document-glyph" aria-hidden="true">
-          <span>REF</span><i /><i /><i />
+        <div aria-hidden="true" className="launch-spark"><Sparkles size={27} strokeWidth={1.7} /></div>
+        <p className="launch-context">Local workspace · citation-safe</p>
+        <h1><span>Margin</span> ready to review</h1>
+        <p>Bring a research paper. Margin will parse its citation graph, review the evidence, and keep every edit under your control.</p>
+        <div aria-label="Available workflows" className="capability-grid">
+          {CAPABILITIES.map((capability) => <span key={capability}>{capability}</span>)}
         </div>
-        <p className="eyebrow">Start with the manuscript</p>
-        <h2>See what the paper says—and whether its citations agree.</h2>
-        <p>Upload a text-native research PDF. The original remains unchanged while every proposed edit waits for approval.</p>
       </div>
+
       <div
-        className="upload-dropzone"
+        className="upload-composer"
         data-dragging={dragging}
         onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
         onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
@@ -52,26 +56,36 @@ export function UploadSurface({
         />
         {busyLabel ? (
           <div className="upload-progress" aria-live="polite">
-            <div className="scan-line" aria-hidden="true" />
-            <FileSearch aria-hidden="true" size={26} />
-            <strong>{busyLabel}</strong>
-            <p>Layout → sections → markers → references → CSL-JSON</p>
+            <div className="progress-copy">
+              <FileSearch aria-hidden="true" size={18} />
+              <div><strong>{busyLabel}</strong><p>Layout → sections → markers → references → CSL-JSON</p></div>
+            </div>
+            <div aria-hidden="true" className="progress-track"><span /></div>
           </div>
         ) : (
           <>
-            <Upload aria-hidden="true" size={24} />
-            <strong>Drop a research paper here</strong>
-            <p>PDF · up to 20 MB · text-native papers work best</p>
-            <button className="action-button" onClick={() => inputRef.current?.click()} type="button">
-              Choose PDF
+            <button className="upload-prompt" onClick={() => inputRef.current?.click()} type="button">
+              <span>Drop a research paper here, or choose a PDF</span>
             </button>
+            <div className="upload-composer-footer">
+              <button aria-label="Choose a PDF" className="composer-icon-button" onClick={() => inputRef.current?.click()} title="Choose PDF" type="button">
+                <Plus aria-hidden="true" size={17} />
+              </button>
+              <button className="file-picker" onClick={() => inputRef.current?.click()} type="button">
+                <FileText aria-hidden="true" size={14} /> Choose PDF
+              </button>
+              <span className="upload-spec">PDF · 20 MB</span>
+              <button aria-label="Choose PDF to begin" className="launch-send" onClick={() => inputRef.current?.click()} type="button">
+                <ArrowUp aria-hidden="true" size={17} />
+              </button>
+            </div>
           </>
         )}
       </div>
       {error ? <p className="upload-error" role="alert">{error}</p> : null}
       <div className="upload-footnote">
-        <LockKeyhole aria-hidden="true" size={14} />
-        <span>Files stay in the local assessment workspace. Paper text is not written to logs.</span>
+        <LockKeyhole aria-hidden="true" size={13} />
+        <span>The original stays unchanged. Proposed edits always require approval.</span>
       </div>
     </div>
   );

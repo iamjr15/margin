@@ -1,6 +1,6 @@
 # Margin — evidence-first paper improvement
 
-Margin is a working AnswerThis-style research-paper agent. A researcher uploads a PDF, inspects the parsed structure and CSL-JSON references, requests a review grounded in Semantic Scholar and OpenAlex, proposes a natural-language edit, approves a typed diff, and exports a rebuilt PDF/TeX bundle.
+Margin is a working AnswerThis-style research-paper agent. A researcher uploads a PDF, follows a durable review thread grounded in Semantic Scholar and OpenAlex, inspects the parsed manuscript and CSL-JSON references, proposes a natural-language edit, approves a typed diff, and exports a rebuilt PDF/TeX bundle.
 
 The implementation deliberately favors a coherent, explainable slice over a wide feature surface: one canonical paper model, three constrained edit operations, two scholarly providers, immutable versions, and executable citation invariants.
 
@@ -20,6 +20,7 @@ The implementation deliberately favors a coherent, explainable slice over a wide
 | CSL, not hand formatting | Every reference is CSL-JSON; Pandoc citeproc + official `.csl` styles render output |
 | Real export | ZIP contains revised PDF, TeX, CSL-JSON, style, and validation report |
 | Core tests | TEI projection, style detection, normalization, edit invariants, and export serialization |
+| Explainable UX | Compact workspace rail, durable tool/result thread, persistent command composer, and adjacent manuscript artifact |
 
 The two system-design sections weighted most heavily in the prompt are documented in [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md). The scoped delivery plan and risk register are in [PLAN.md](PLAN.md).
 
@@ -59,6 +60,8 @@ brew install pandoc tectonic
 ## Real-paper workflow
 
 The screenshots below were captured from a live run on a nine-page research paper—not seeded demo data. GROBID extracted eight original references. Review used both provider boundaries, the approved edit added two real sources, and export produced ten CSL entries with zero unresolved references.
+
+The interface uses one simple spatial model throughout: research activity accumulates in the thread, the canonical manuscript stays visible as an adjacent artifact, and the command composer remains in reach. Tool calls collapse into inspectable status rows; failures and approvals stay in context instead of becoming transient toasts. The manuscript can be hidden for a focused reading of a long review, while mobile uses an explicit Thread/Manuscript switch.
 
 | Parsed paper | Live evidence review |
 |---|---|
@@ -126,7 +129,7 @@ This is intentionally stronger than asking an LLM to “preserve citations” in
 | Persistence | `lib/db.ts`, `lib/repository.ts` | SQLite WAL, immutable versions, reviews, proposals, provider cache |
 | Export | `lib/export.ts` | Pandoc Markdown, citeproc, TeX/PDF, validation report, ZIP |
 | API | `app/api/documents/**` | Thin request/response boundary around domain services |
-| UI | `components/**`, `app/globals.css` | Responsive upload/review/paper workbench |
+| UI | `components/**`, `app/globals.css` | Responsive rail, durable review thread, command composer, and manuscript artifact |
 
 There are about 5,000 production lines including the responsive CSS. The core behavior stays in small modules rather than a framework-heavy service graph.
 

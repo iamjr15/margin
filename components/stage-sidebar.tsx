@@ -1,77 +1,133 @@
 "use client";
 
-import { Download, FileText, RotateCcw, ShieldCheck } from "lucide-react";
+import {
+  Download,
+  FileText,
+  Menu,
+  MessageCircle,
+  PanelRight,
+  Plus,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import { useState } from "react";
 import type { DocumentSnapshot } from "@/lib/domain";
 
 interface Props {
   snapshot: DocumentSnapshot | null;
   busy: boolean;
+  paperOpen: boolean;
   onExport: () => void;
   onReset: () => void;
+  onShowThread: () => void;
+  onTogglePaper: () => void;
 }
 
 const STAGES = ["Upload", "Parse", "Review", "Revise", "Export"] as const;
 
-export function StageSidebar({ snapshot, busy, onExport, onReset }: Props) {
+export function StageSidebar({
+  snapshot,
+  busy,
+  paperOpen,
+  onExport,
+  onReset,
+  onShowThread,
+  onTogglePaper,
+}: Props) {
+  const [expanded, setExpanded] = useState(false);
   const completed = completedStages(snapshot);
   const active = activeStage(snapshot);
+
   return (
-    <aside className="panel stage-panel">
-      <div className="brand-lockup">
-        <span aria-hidden="true" className="margin-mark"><span /></span>
-        <div>
-          <p className="brand-name">Margin</p>
-          <p className="brand-subtitle">Evidence-first review</p>
-        </div>
-      </div>
-
-      <div className="stage-document">
-        <p className="eyebrow">Current manuscript</p>
-        {snapshot ? (
-          <>
-            <FileText aria-hidden="true" size={17} />
-            <p title={snapshot.filename}>{snapshot.filename}</p>
-            <button aria-label="Upload a different paper" onClick={onReset} type="button">
-              <RotateCcw aria-hidden="true" size={15} />
-            </button>
-          </>
-        ) : (
-          <p className="empty-document">No paper loaded</p>
-        )}
-      </div>
-
-      <ol className="stage-list">
-        {STAGES.map((stage, index) => (
-          <li aria-current={stage === active ? "step" : undefined} key={stage}>
-            <span
-              aria-hidden="true"
-              className={`status-dot ${completed.includes(stage) ? "complete" : stage === active ? "active" : ""}`}
-            />
-            <span className="stage-index">0{index + 1}</span>
-            <span>{stage}</span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="sidebar-bottom">
-        <div className="integrity-note">
-          <ShieldCheck aria-hidden="true" size={17} />
-          <div>
-            <p>Citation integrity</p>
-            <span>Existing anchors are immutable across edits.</span>
-          </div>
-        </div>
+    <aside className="stage-panel" data-expanded={expanded}>
+      <div className="rail-top">
         <button
-          className="action-button export-button"
-          disabled={!snapshot?.paper || busy}
-          onClick={onExport}
+          aria-label={expanded ? "Collapse workspace rail" : "Expand workspace rail"}
+          className="rail-brand"
+          onClick={() => setExpanded((value) => !value)}
+          title={expanded ? "Collapse" : "Expand"}
           type="button"
         >
-          <Download aria-hidden="true" size={16} />
-          Export revision
+          <span aria-hidden="true" className="margin-mark"><span /></span>
+          <span className="rail-label brand-name">Margin</span>
+          {expanded ? <X aria-hidden="true" className="rail-close" size={15} /> : <Menu aria-hidden="true" className="rail-menu" size={12} />}
         </button>
       </div>
+
+      <nav aria-label="Workspace" className="rail-navigation">
+        <RailButton icon={<Plus size={16} />} label="New paper" onClick={onReset} />
+        <RailButton active={Boolean(snapshot?.paper && !paperOpen)} icon={<MessageCircle size={16} />} label="Review thread" onClick={onShowThread} />
+        <RailButton
+          active={Boolean(snapshot?.paper && paperOpen)}
+          disabled={!snapshot?.paper}
+          icon={<PanelRight size={16} />}
+          label="Manuscript"
+          onClick={onTogglePaper}
+        />
+        <RailButton
+          disabled={!snapshot?.paper || busy}
+          icon={<Download size={16} />}
+          label="Export revision"
+          onClick={onExport}
+        />
+      </nav>
+
+      {expanded ? (
+        <div className="rail-drawer">
+          <p className="drawer-label">Current paper</p>
+          {snapshot ? (
+            <div className="drawer-document">
+              <FileText aria-hidden="true" size={16} />
+              <div><strong title={snapshot.filename}>{snapshot.filename}</strong><span>{snapshot.versionCount} version{snapshot.versionCount === 1 ? "" : "s"}</span></div>
+            </div>
+          ) : (
+            <p className="drawer-empty">Upload a PDF to start a review thread.</p>
+          )}
+          <ol className="stage-list">
+            {STAGES.map((stage, index) => (
+              <li aria-current={stage === active ? "step" : undefined} key={stage}>
+                <span className={`status-dot ${completed.includes(stage) ? "complete" : stage === active ? "active" : ""}`} />
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{stage}</strong>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
+      <div className="rail-bottom">
+        <div className="rail-integrity" title="Citation anchors are protected">
+          <ShieldCheck aria-hidden="true" size={16} />
+          <span className="rail-label">Citation-safe edits</span>
+        </div>
+      </div>
     </aside>
+  );
+}
+
+function RailButton({
+  active = false,
+  disabled = false,
+  icon,
+  label,
+  onClick,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-current={active ? "page" : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {icon}<span className="rail-label">{label}</span>
+    </button>
   );
 }
 

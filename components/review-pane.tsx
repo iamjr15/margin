@@ -1,6 +1,16 @@
 "use client";
 
-import { AlertTriangle, ArrowUpRight, BookOpenCheck, Database, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  BookOpenCheck,
+  Check,
+  ChevronRight,
+  FileText,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { DocumentSnapshot, ReviewFinding, WorkSource } from "@/lib/domain";
 import { ProposalCard } from "@/components/proposal-card";
 
@@ -13,96 +23,159 @@ interface Props {
 }
 
 export function ReviewPane({ snapshot, busyLabel, error, onReview, onDecide }: Props) {
-  const sourceMap = new Map(snapshot?.review?.sources.map((source) => [source.id, source]) ?? []);
+  const busyAnchor = useRef<HTMLDivElement>(null);
+  const reviewAnchor = useRef<HTMLDivElement>(null);
+  const proposalAnchor = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = snapshot?.proposal
+      ? proposalAnchor.current
+      : busyLabel
+        ? busyAnchor.current
+        : snapshot?.review
+          ? reviewAnchor.current
+          : null;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [busyLabel, snapshot?.proposal?.id, snapshot?.review?.id]);
+
+  if (!snapshot?.paper) return null;
+  const sourceMap = new Map(snapshot.review?.sources.map((source) => [source.id, source]) ?? []);
+  const paper = snapshot.paper;
+
   return (
     <div className="review-layout">
-      <header className="pane-header">
-        <div>
-          <p className="eyebrow">Reviewer desk</p>
-          <h2>Evidence and changes</h2>
+      <header className="thread-toolbar">
+        <button className="thread-title" title={snapshot.filename} type="button">
+          <FileText aria-hidden="true" size={13} />
+          <span>{snapshot.filename}</span>
+        </button>
+        <div className="thread-meta">
+          <span>v{snapshot.versionCount}</span>
+          <span>{paper.references.length} references</span>
         </div>
-        {snapshot?.paper ? (
-          <button
-            className="action-button secondary compact"
-            disabled={Boolean(busyLabel)}
-            onClick={() => void onReview()}
-            type="button"
-          >
-            <Search aria-hidden="true" size={14} />
-            {snapshot.review ? "Review again" : "Run peer review"}
-          </button>
-        ) : null}
       </header>
 
       <div className="panel-scroll review-scroll">
-        <div aria-atomic="true" aria-live="polite">
-          {busyLabel ? <BusyState label={busyLabel} /> : null}
+        <div className="thread-flow">
+          <article className="user-turn">
+            <p>Review this manuscript and preserve its citations.</p>
+            <span>{snapshot.filename} · PDF</span>
+          </article>
+
+          <ParseTrace snapshot={snapshot} />
+
           {error ? (
-            <div className="error-banner" role="alert">
-              <AlertTriangle aria-hidden="true" size={17} />
+            <div className="thread-error" role="alert">
+              <AlertTriangle aria-hidden="true" size={16} />
               <div><strong>Action needed</strong><p>{error}</p></div>
             </div>
           ) : null}
-        </div>
 
-        {!snapshot ? <EvidenceContract /> : null}
-        {snapshot?.proposal ? <ProposalCard onDecide={onDecide} proposal={snapshot.proposal} /> : null}
-        {snapshot?.paper && !snapshot.review && !snapshot.proposal && !busyLabel ? <ReviewEmpty /> : null}
-        {snapshot?.review ? (
-          <>
-            <ReviewSummary snapshot={snapshot} />
-            <div className="finding-list">
-              {snapshot.review.findings.map((finding) => (
-                <FindingCard finding={finding} key={finding.id} sourceMap={sourceMap} />
-              ))}
-              {snapshot.review.findings.length === 0 ? (
-                <div className="quiet-empty">
-                  <BookOpenCheck aria-hidden="true" size={20} />
-                  <p>No actionable findings passed the evidence checks.</p>
-                  <span>This does not prove the manuscript is complete.</span>
+          {busyLabel ? <><div className="thread-anchor" ref={busyAnchor} /><BusyState label={busyLabel} /></> : null}
+
+          {!snapshot.review && !snapshot.proposal && !busyLabel ? (
+            <AssistantTurn>
+              <p className="assistant-kicker">Manuscript ready</p>
+              <h2>I mapped the paper into linked claims, citations, and references.</h2>
+              <p>Next, I can search Semantic Scholar and OpenAlex, identify missing work, and check cited claims against available abstracts.</p>
+              <button className="thread-primary-action" onClick={() => void onReview()} type="button">
+                <Search aria-hidden="true" size={15} /> Run evidence review
+              </button>
+            </AssistantTurn>
+          ) : null}
+
+          {snapshot.review ? (
+            <>
+              <div className="thread-anchor" ref={reviewAnchor} />
+              <article className="user-turn compact">
+                <p>Check the claims, find missing work, and show the evidence.</p>
+              </article>
+              <ProviderTrace snapshot={snapshot} />
+              <AssistantTurn>
+                <div className="assistant-heading">
+                  <div><p className="assistant-kicker">Evidence review</p><h2>{reviewHeadline(snapshot.review.findings.length)}</h2></div>
+                  <button className="thread-icon-action" disabled={Boolean(busyLabel)} onClick={() => void onReview()} title="Run review again" type="button">
+                    <Search aria-hidden="true" size={14} />
+                  </button>
                 </div>
-              ) : null}
-            </div>
-            <details className="limitations">
-              <summary>Review limitations</summary>
-              <ul>{snapshot.review.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
-            </details>
-          </>
-        ) : null}
+                <ReviewSummary snapshot={snapshot} />
+                <div className="finding-list">
+                  {snapshot.review.findings.map((finding) => (
+                    <FindingCard finding={finding} key={finding.id} sourceMap={sourceMap} />
+                  ))}
+                  {snapshot.review.findings.length === 0 ? (
+                    <div className="quiet-empty">
+                      <BookOpenCheck aria-hidden="true" size={20} />
+                      <p>No actionable findings passed the evidence checks.</p>
+                      <span>This does not prove the manuscript is complete.</span>
+                    </div>
+                  ) : null}
+                </div>
+                <details className="limitations">
+                  <summary>Review limitations</summary>
+                  <ul>{snapshot.review.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
+                </details>
+              </AssistantTurn>
+            </>
+          ) : null}
+
+          {snapshot.proposal ? (
+            <>
+              <div className="thread-anchor" ref={proposalAnchor} />
+              <article className="user-turn compact"><p>{snapshot.proposal.command}</p></article>
+              <AssistantTurn><ProposalCard onDecide={onDecide} proposal={snapshot.proposal} /></AssistantTurn>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
-function EvidenceContract() {
+function AssistantTurn({ children }: { children: React.ReactNode }) {
   return (
-    <div className="evidence-contract">
-      <p className="eyebrow">Trust contract</p>
-      <h3>Every conclusion has a visible route back to evidence.</h3>
-      <ol>
-        <li><span>01</span><div><strong>Parse without hiding failure</strong><p>Unlinked markers and incomplete references remain visible.</p></div></li>
-        <li><span>02</span><div><strong>Search two academic indexes</strong><p>Provider and retrieval method appear beside each source.</p></div></li>
-        <li><span>03</span><div><strong>Approve before changing text</strong><p>The current paper remains immutable until you accept a diff.</p></div></li>
-      </ol>
-    </div>
+    <article className="assistant-turn">
+      <div aria-hidden="true" className="assistant-mark"><Sparkles size={14} /></div>
+      <div className="assistant-content">{children}</div>
+    </article>
   );
 }
 
-function ReviewEmpty() {
+function ParseTrace({ snapshot }: { snapshot: DocumentSnapshot }) {
+  const paper = snapshot.paper;
+  if (!paper) return null;
   return (
-    <div className="review-empty">
-      <Database aria-hidden="true" size={22} />
-      <h3>The parse is ready to review</h3>
-      <p>Search Semantic Scholar and OpenAlex for missing work, then check cited claims against available abstracts.</p>
-    </div>
+    <details className="tool-trace">
+      <summary><Check aria-hidden="true" size={13} /><span>Parsed manuscript</span><small>{paper.sections.length} sections · {paper.references.length} references</small><ChevronRight aria-hidden="true" size={13} /></summary>
+      <div className="trace-body">
+        <p><span>GROBID</span> Structured the PDF into TEI and stable sentence IDs.</p>
+        <p><span>CSL-JSON</span> Normalized {paper.references.length} bibliography records.</p>
+        <p><span>Integrity</span> Retained {paper.warnings.length} visible parse warning{paper.warnings.length === 1 ? "" : "s"}.</p>
+      </div>
+    </details>
+  );
+}
+
+function ProviderTrace({ snapshot }: { snapshot: DocumentSnapshot }) {
+  const review = snapshot.review;
+  if (!review) return null;
+  return (
+    <details className="tool-trace">
+      <summary><Check aria-hidden="true" size={13} /><span>Called 2 research providers</span><small>{review.engine === "model" ? "Model synthesis" : "Deterministic fallback"}</small><ChevronRight aria-hidden="true" size={13} /></summary>
+      <div className="trace-body provider-trace">
+        <p><i data-status={review.providerStatus.semanticScholar} /><span>Semantic Scholar</span>{review.providerStatus.semanticScholar}</p>
+        <p><i data-status={review.providerStatus.openAlex} /><span>OpenAlex</span>{review.providerStatus.openAlex}</p>
+        <p><span>Grounding</span> Source IDs and quoted abstract evidence were validated before display.</p>
+      </div>
+    </details>
   );
 }
 
 function BusyState({ label }: { label: string }) {
   return (
-    <div className="busy-card">
-      <div className="busy-pulse"><span /><span /><span /></div>
-      <div><strong>{label}</strong><p>Partial provider failures will be shown instead of hidden.</p></div>
+    <div className="thread-working" aria-live="polite">
+      <span aria-hidden="true" className="working-spinner" />
+      <div><strong>Working</strong><p>{label}</p></div>
     </div>
   );
 }
@@ -114,11 +187,8 @@ function ReviewSummary({ snapshot }: { snapshot: DocumentSnapshot }) {
     <div className="review-summary">
       <div><span>{review.findings.length}</span><p>findings</p></div>
       <div><span>{review.sources.length}</span><p>real sources</p></div>
-      <div className="provider-state">
-        <p><i data-status={review.providerStatus.semanticScholar} /> Semantic Scholar</p>
-        <p><i data-status={review.providerStatus.openAlex} /> OpenAlex</p>
-      </div>
-      <span className="engine-label">{review.engine === "model" ? "Model reviewed" : "Fallback review"}</span>
+      <div><span>{snapshot.paper?.warnings.length ?? 0}</span><p>parse flags</p></div>
+      <span className="engine-label">{review.engine === "model" ? "OpenAI reviewed · provider-grounded" : "Local fallback · provider-grounded"}</span>
     </div>
   );
 }
@@ -133,9 +203,7 @@ function FindingCard({
   const sources = finding.sourceIds.map((id) => sourceMap.get(id)).filter((source): source is WorkSource => Boolean(source));
   return (
     <article className="finding-card" data-severity={finding.severity}>
-      <div className="finding-meta">
-        <span>{finding.kind === "missing-work" ? "Missing work" : finding.verdict?.replaceAll("_", " ")}</span>
-      </div>
+      <div className="finding-meta"><span>{finding.kind === "missing-work" ? "Missing work" : finding.verdict?.replaceAll("_", " ")}</span></div>
       <h3>{finding.title}</h3>
       <p>{finding.rationale}</p>
       {finding.evidence ? <blockquote>“{finding.evidence}”</blockquote> : null}
@@ -146,9 +214,15 @@ function FindingCard({
             <span>{source.authors.slice(0, 2).join(", ")}{source.year ? ` · ${source.year}` : ""}</span>
             <em>{source.providers.join(" + ")} · {source.retrievalMethod.replaceAll("-", " ")}</em>
           </div>
-          <ArrowUpRight aria-hidden="true" size={15} />
+          <ArrowUpRight aria-hidden="true" size={14} />
         </a>
       ))}
     </article>
   );
+}
+
+function reviewHeadline(count: number): string {
+  if (count === 0) return "No finding cleared the evidence threshold.";
+  if (count === 1) return "One issue deserves the author’s attention.";
+  return `${count} evidence-backed findings deserve attention.`;
 }

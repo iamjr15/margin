@@ -81,12 +81,14 @@ Exit check: live ZIP has valid CRCs; PDF has nine readable pages; ten references
 
 ### 7. Product workflow and evidence — complete
 
-- Make upload the first screen.
-- Provide side-by-side reviewer and manuscript panes with mobile tabs.
+- Make upload the first screen with a focused, composer-like PDF drop target.
+- Use a compact workspace rail, durable review thread, persistent command composer, and adjacent manuscript artifact.
+- Collapse parse/provider activity into inspectable tool rows and preserve failures, proposals, and decisions in the thread.
+- Let the manuscript artifact close for focused thread reading; use explicit Thread/Manuscript tabs on mobile.
 - Show citation markers, parse warnings, source provenance, provider health, and approval state.
-- Capture parsed, review, proposal, approved, and citation-library screenshots.
+- Capture parsed, review, proposal, approved, and citation-library screenshots from the real workflow.
 
-Exit check: browser-driven real-paper workflow completes from upload to downloaded ZIP.
+Exit check: browser-driven real-paper workflow completes from upload to downloaded ZIP on desktop; both mobile views remain usable without horizontal overflow.
 
 ### 8. Submission handoff — complete
 
@@ -129,7 +131,7 @@ Exit check: browser-driven real-paper workflow completes from upload to download
 | Editing | Rewrite preservation, verified addition, deletion rejection, movement rejection |
 | Export | Stable cite IDs, unresolved visibility, Unicode math conversion |
 | Live | Provider 200s, real GROBID parse, model review, approval, ZIP/PDF validation |
-| UI | Desktop and mobile upload; parsed, review, proposal, approved, citations states |
+| UI | Desktop and mobile launch; parsed, review, proposal, approved, citations, style-switch, focused-thread, and export states |
 
 ## Deliberate scope cuts
 

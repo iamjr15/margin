@@ -4,6 +4,8 @@ import { useState } from "react";
 import {
   type DocumentSnapshot,
   DocumentSnapshotSchema,
+  type EditProposal,
+  type ReviewResult,
 } from "@/lib/domain";
 import { CommandComposer } from "@/components/command-composer";
 import { PaperPane } from "@/components/paper-pane";
@@ -17,6 +19,9 @@ export function ResearchWorkspace() {
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<MobileView>("paper");
+  const [paperOpen, setPaperOpen] = useState(true);
+  const [threadReview, setThreadReview] = useState<ReviewResult | null>(null);
+  const [threadProposal, setThreadProposal] = useState<EditProposal | null>(null);
 
   const upload = async (file: File) => {
     setBusyLabel("Parsing the paper into linked sections and citations…");
@@ -30,7 +35,10 @@ export function ResearchWorkspace() {
       const parsed = DocumentSnapshotSchema.safeParse(candidate);
       if (parsed.success) setSnapshot(parsed.data);
       if (!response.ok) throw new Error(apiMessage(payload));
+      setThreadReview(null);
+      setThreadProposal(null);
       setMobileView("paper");
+      setPaperOpen(true);
     } catch (uploadError) {
       setError(messageFrom(uploadError));
     } finally {
@@ -64,7 +72,8 @@ export function ResearchWorkspace() {
 
   const decide = async (decision: "approve" | "reject") => {
     if (!snapshot?.proposal) return;
-    await mutateSnapshot(
+    const proposal = snapshot.proposal;
+    const next = await mutateSnapshot(
       `/api/documents/${snapshot.id}/proposals/${snapshot.proposal.id}`,
       {
         method: "PATCH",
@@ -74,6 +83,13 @@ export function ResearchWorkspace() {
       decision === "approve" ? "Validating and committing a new paper version…" : "Discarding the proposal…",
       decision === "approve" ? "paper" : "review",
     );
+    if (next) {
+      setThreadProposal({
+        ...proposal,
+        status: decision === "approve" ? "approved" : "rejected",
+        decidedAt: new Date().toISOString(),
+      });
+    }
   };
 
   const changeStyle = async (style: "apa" | "ieee") => {
@@ -116,17 +132,22 @@ export function ResearchWorkspace() {
     init: RequestInit,
     label: string,
     nextView: MobileView,
-  ) => {
+  ): Promise<DocumentSnapshot | null> => {
     setBusyLabel(label);
     setError(null);
     try {
       const response = await fetch(url, init);
       const payload = (await response.json()) as unknown;
       if (!response.ok) throw new Error(apiMessage(payload));
-      setSnapshot(DocumentSnapshotSchema.parse(payload));
+      const next = DocumentSnapshotSchema.parse(payload);
+      setSnapshot(next);
+      if (next.review) setThreadReview(next.review);
+      if (next.proposal) setThreadProposal(next.proposal);
       setMobileView(nextView);
+      return next;
     } catch (mutationError) {
       setError(messageFrom(mutationError));
+      return null;
     } finally {
       setBusyLabel(null);
     }
@@ -134,72 +155,106 @@ export function ResearchWorkspace() {
 
   return (
     <main className="workspace-shell" id="main-content">
-      <div className="workspace-grid">
+      <div
+        className="workspace-grid"
+        data-has-paper={Boolean(snapshot?.paper)}
+        data-paper-open={Boolean(snapshot?.paper && paperOpen)}
+      >
         <StageSidebar
           busy={Boolean(busyLabel)}
           onExport={exportBundle}
           onReset={() => {
             setSnapshot(null);
             setError(null);
+            setThreadReview(null);
+            setThreadProposal(null);
             setMobileView("paper");
+            setPaperOpen(true);
           }}
+          onShowThread={() => {
+            setMobileView("review");
+            setPaperOpen(false);
+          }}
+          onTogglePaper={() => {
+            setMobileView("paper");
+            setPaperOpen((open) => !open);
+          }}
+          paperOpen={paperOpen}
           snapshot={snapshot}
         />
-        <nav aria-label="Workspace views" className="mobile-tabs">
-          <button
-            aria-pressed={mobileView === "review"}
-            className={mobileView === "review" ? "active" : ""}
-            onClick={() => setMobileView("review")}
-            type="button"
-          >
-            Review
-          </button>
-          <button
-            aria-pressed={mobileView === "paper"}
-            className={mobileView === "paper" ? "active" : ""}
-            onClick={() => setMobileView("paper")}
-            type="button"
-          >
-            Paper
-          </button>
-        </nav>
-        <section
-          aria-label="Review and editing"
-          className="panel review-panel"
-          data-mobile-visible={mobileView === "review"}
-        >
-          <ReviewPane
-            busyLabel={busyLabel}
-            error={error}
-            onDecide={decide}
-            onReview={runReview}
-            snapshot={snapshot}
-          />
-          <CommandComposer
-            disabled={!snapshot?.paper || Boolean(busyLabel) || Boolean(snapshot?.proposal)}
-            onSubmit={propose}
-            placeholder={
-              !snapshot?.paper
-                ? "Upload a paper to unlock editing"
-                : snapshot.proposal
-                  ? "Approve or reject the current proposal first"
-                  : busyLabel ?? "Describe a targeted improvement…"
-            }
-          />
-        </section>
-        <section
-          aria-label="Parsed paper"
-          className="panel paper-panel"
-          data-mobile-visible={mobileView === "paper"}
-        >
-          <PaperPane
-            busyLabel={busyLabel}
-            error={error}
-            onStyleChange={changeStyle}
-            onUpload={upload}
-            snapshot={snapshot}
-          />
-        </section>
+        {!snapshot?.paper ? (
+          <section aria-label="Upload a research paper" className="launch-panel">
+            <PaperPane
+              busyLabel={busyLabel}
+              error={error}
+              onStyleChange={changeStyle}
+              onUpload={upload}
+              snapshot={snapshot}
+            />
+          </section>
+        ) : (
+          <>
+            <nav aria-label="Workspace views" className="mobile-tabs">
+              <button
+                aria-pressed={mobileView === "review"}
+                className={mobileView === "review" ? "active" : ""}
+                onClick={() => setMobileView("review")}
+                type="button"
+              >
+                Thread
+              </button>
+              <button
+                aria-pressed={mobileView === "paper"}
+                className={mobileView === "paper" ? "active" : ""}
+                onClick={() => setMobileView("paper")}
+                type="button"
+              >
+                Manuscript
+              </button>
+            </nav>
+            <section
+              aria-label="Review thread and editing"
+              className="review-panel"
+              data-mobile-visible={mobileView === "review"}
+              id="review-thread"
+              tabIndex={-1}
+            >
+              <ReviewPane
+                busyLabel={busyLabel}
+                error={error}
+                onDecide={decide}
+                onReview={runReview}
+                snapshot={{
+                  ...snapshot,
+                  review: snapshot.review ?? threadReview,
+                  proposal: snapshot.proposal ?? threadProposal,
+                }}
+              />
+              <CommandComposer
+                disabled={Boolean(busyLabel) || Boolean(snapshot.proposal)}
+                onSubmit={propose}
+                placeholder={
+                  snapshot.proposal
+                    ? "Approve or reject the current proposal first"
+                    : busyLabel ?? "Ask Margin to improve this paper…"
+                }
+              />
+            </section>
+            <section
+              aria-label="Parsed manuscript artifact"
+              className="paper-panel"
+              data-mobile-visible={mobileView === "paper"}
+            >
+              <PaperPane
+                busyLabel={busyLabel}
+                error={error}
+                onStyleChange={changeStyle}
+                onUpload={upload}
+                snapshot={snapshot}
+              />
+            </section>
+          </>
+        )}
       </div>
     </main>
   );
