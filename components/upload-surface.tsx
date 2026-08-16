@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, FileSearch, FileText, LockKeyhole, Plus, Sparkles } from "lucide-react";
+import { FileSearch, FileText, LockKeyhole, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
 
 export function UploadSurface({
@@ -23,13 +23,13 @@ export function UploadSurface({
     <div className="upload-page">
       <div className="upload-intro">
         <div aria-hidden="true" className="launch-spark"><Sparkles size={27} strokeWidth={1.7} /></div>
-        <p className="launch-context">Local workspace · citation-safe</p>
         <h1><span>Margin</span> ready to review</h1>
         <p>Bring a research paper. Margin will parse its citation graph, review the evidence, and keep every edit under your control.</p>
       </div>
 
       <div
-        className="upload-composer"
+        aria-label="Upload a research paper"
+        className="upload-dropzone"
         data-dragging={dragging}
         onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
         onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
@@ -58,23 +58,17 @@ export function UploadSurface({
             <div aria-hidden="true" className="progress-track"><span /></div>
           </div>
         ) : (
-          <>
-            <button className="upload-prompt" onClick={() => inputRef.current?.click()} type="button">
-              <span>Drop a research paper here, or choose a PDF</span>
-            </button>
-            <div className="upload-composer-footer">
-              <button aria-label="Choose a PDF" className="composer-icon-button" onClick={() => inputRef.current?.click()} title="Choose PDF" type="button">
-                <Plus aria-hidden="true" size={17} />
-              </button>
-              <button className="file-picker" onClick={() => inputRef.current?.click()} type="button">
-                <FileText aria-hidden="true" size={14} /> Choose PDF
-              </button>
-              <span className="upload-spec">PDF · 20 MB</span>
-              <button aria-label="Choose PDF to begin" className="launch-send" onClick={() => inputRef.current?.click()} type="button">
-                <ArrowUp aria-hidden="true" size={17} />
-              </button>
+          <div className="upload-dropzone-content">
+            <div aria-hidden="true" className="upload-file-icon"><FileText size={25} strokeWidth={1.6} /></div>
+            <div className="upload-dropzone-copy">
+              <strong>Upload a research paper</strong>
+              <span>Drag and drop your PDF here</span>
             </div>
-          </>
+            <button className="file-picker" onClick={() => inputRef.current?.click()} type="button">
+              Choose PDF
+            </button>
+            <span className="upload-spec">PDF only · 20 MB maximum</span>
+          </div>
         )}
       </div>
       {error ? <p className="upload-error" role="alert">{error}</p> : null}
