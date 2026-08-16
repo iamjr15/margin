@@ -4,7 +4,7 @@ I built Margin as a working AnswerThis-style research-paper agent. A researcher 
 
 I deliberately favored a coherent, explainable slice over a wide feature surface: one canonical paper model, three constrained edit operations, two scholarly providers, immutable versions, and executable citation invariants.
 
-## Interviewer quick read
+## Assessment coverage
 
 | Assessment requirement | Implementation |
 |---|---|
