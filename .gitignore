@@ -1,0 +1,12 @@
+.next/
+node_modules/
+.env*
+!.env.example
+data/
+artifacts/*
+!artifacts/.gitkeep
+coverage/
+tmp/
+*.tsbuildinfo
+*.log
+.DS_Store

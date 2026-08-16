@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt><title>Reliable Evidence Systems</title></titleStmt>
+      <sourceDesc>
+        <biblStruct>
+          <analytic>
+            <author><persName><forename>Ada</forename><surname>Lovelace</surname></persName></author>
+          </analytic>
+        </biblStruct>
+      </sourceDesc>
+    </fileDesc>
+    <profileDesc>
+      <abstract>
+        <div><p xml:id="p-abstract"><s xml:id="s-abstract">We study evidence-preserving review systems.</s></p></div>
+      </abstract>
+    </profileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div xml:id="sec-intro">
+        <head>Introduction</head>
+        <p xml:id="p-1">
+          <s xml:id="s-1">Prior systems lose citation context <ref type="bibr" target="#b0" xml:id="c-1" coords="1,10,10,20,8">[1]</ref>.</s>
+          <s xml:id="s-2">Our representation keeps every anchor explicit.</s>
+        </p>
+      </div>
+    </body>
+    <back>
+      <div type="references">
+        <listBibl>
+          <biblStruct xml:id="b0">
+            <analytic>
+              <title level="a">Citation-Aware Document Editing</title>
+              <author><persName><forename>Grace</forename><surname>Hopper</surname></persName></author>
+            </analytic>
+            <monogr>
+              <title level="j">Journal of Reliable Systems</title>
+              <imprint>
+                <date when="2024"/>
+                <biblScope unit="volume">7</biblScope>
+                <biblScope unit="page" from="10" to="21"/>
+              </imprint>
+            </monogr>
+            <idno type="DOI">10.1000/reliable.2024</idno>
+            <note type="raw_reference">[1] G. Hopper, “Citation-Aware Document Editing,” 2024.</note>
+          </biblStruct>
+        </listBibl>
+      </div>
+    </back>
+  </text>
+</TEI>

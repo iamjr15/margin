@@ -1,0 +1,35 @@
+services:
+  web:
+    platform: linux/amd64
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      GROBID_URL: http://grobid:8070
+      DATA_DIR: /app/data
+    volumes:
+      - margin-data:/app/data
+    depends_on:
+      grobid:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grobid:
+    platform: linux/amd64
+    image: grobid/grobid:0.9.1-crf
+    ports:
+      - "127.0.0.1:8070:8070"
+    environment:
+      JAVA_OPTS: -Xms1g -Xmx3g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8070/api/isalive"]
+      interval: 10s
+      timeout: 3s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  margin-data:

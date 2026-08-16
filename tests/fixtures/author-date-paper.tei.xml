@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc><titleStmt><title>Transparent Peer Review</title></titleStmt><sourceDesc/></fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div xml:id="sec-methods">
+        <head>Methods</head>
+        <p><s>We retain provenance throughout the workflow <ref type="bibr" target="#missing" xml:id="c-missing">(Rivera, 2023)</ref>.</s></p>
+      </div>
+    </body>
+    <back><div type="references"><listBibl/></div></back>
+  </text>
+</TEI>
