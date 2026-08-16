@@ -42,9 +42,7 @@ export async function proposeEdit(
   command: string,
 ): Promise<EditProposal> {
   if (!command.trim()) throw new AppError("command_required", "Describe the change you want.", 400);
-  const plan = hasModelAccess()
-    ? await planWithModel(command, paper).catch(() => fallbackPlan(command, paper))
-    : fallbackPlan(command, paper);
+  const { plan, engine } = await selectPlan(command, paper);
   if (plan.intent === "UNSUPPORTED") {
     throw new AppError(
       "unsupported_edit",
@@ -63,10 +61,24 @@ export async function proposeEdit(
     command,
     summary: proposalSummary(plan, section, operations.length),
     status: "pending",
-    engine: hasModelAccess() ? "model" : "deterministic-fallback",
+    engine,
     operations,
     createdAt: new Date().toISOString(),
   };
+}
+
+async function selectPlan(
+  command: string,
+  paper: Paper,
+): Promise<{ plan: EditPlan; engine: EditProposal["engine"] }> {
+  if (!hasModelAccess()) {
+    return { plan: fallbackPlan(command, paper), engine: "deterministic-fallback" };
+  }
+  try {
+    return { plan: await planWithModel(command, paper), engine: "model" };
+  } catch {
+    return { plan: fallbackPlan(command, paper), engine: "deterministic-fallback" };
+  }
 }
 
 export function applyProposal(paper: Paper, operations: EditOperation[]): Paper {
