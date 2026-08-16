@@ -165,6 +165,20 @@ This IR reconstructs scholarly semantics, not original page design. Figures, tab
 
 I place the model inside the trust boundary but never at its edge. I do not let it call arbitrary tools, invent metadata that becomes CSL, or replace the paper wholesale.
 
+## Why I use the OpenAI SDK directly
+
+I evaluated both Vercel AI SDK and Mastra. I kept the official OpenAI SDK with a small, domain-specific TypeScript orchestrator because Margin is not a general chatbot: its visible thread is a projection of persisted parse results, provider traces, reviews, and approval-gated proposals. A second generic message model would duplicate that state without strengthening citation safety.
+
+| Option | What it would add | Decision for this implementation |
+|---|---|---|
+| Official OpenAI SDK | Direct Responses API access and Zod-validated structured output | **Used.** It is the smallest boundary around the model calls I actually need. |
+| Vercel AI SDK | Provider abstraction, streaming responses, tool calling, and framework UI hooks | **Considered, not used.** It would help if Margin became a token-streaming, multi-provider chat product, but the application would still own persistence and citation invariants. |
+| Mastra | Open-ended agents, resumable workflows, memory, observability, and evaluation primitives | **Considered, not used.** Its workflow layer would duplicate the explicit parse/review/propose/approve state machine, while an open-ended tool loop would weaken the narrow trust boundary. |
+
+This is a deliberate tradeoff rather than a missing framework. The assessment rewards clear module boundaries and forbids a single giant prompt; explicit functions and typed operations make the important control flow inspectable. If the product grows into long-running background research, multi-paper memory, or multi-model streaming, I would reevaluate Mastra workflows or adopt AI SDK as a transport/UI layer while retaining the current `Paper` IR, provider adapters, operation log, and integrity validator.
+
+Primary references: [AI SDK introduction](https://ai-sdk.dev/docs/introduction), [Mastra agents](https://mastra.ai/docs/agents/overview), [Mastra workflows](https://mastra.ai/docs/workflows/overview), [Mastra memory](https://mastra.ai/docs/memory/overview), and [Mastra observability](https://mastra.ai/docs/observability/overview).
+
 ## Scholarly provider boundary
 
 Both adapters return the same `WorkSource`:

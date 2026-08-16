@@ -15,6 +15,7 @@ I deliberately favored a coherent, explainable slice over a wide feature surface
 | Both academic providers | Semantic Scholar + OpenAlex adapters behind one deduplicating boundary |
 | Grounded peer review | Supplied provider IDs only; abstract evidence is substring-validated |
 | Natural-language edits | Model produces a small plan; application code executes typed operations |
+| Agent stack | Official OpenAI Responses API + Zod; no generic agent framework owns the workflow |
 | Human control | Every edit is a pending proposal until explicit approve/reject |
 | Explainable citation approval | Every proposed citation shows the target claim, why the source supports it, and one exact abstract sentence |
 | Citation safety | Existing anchor ID, multiplicity, and sentence location are immutable |
@@ -101,6 +102,8 @@ Paper URLs, checksums, per-paper results, failure history, and the exact audit c
 ![Margin system architecture](docs/architecture.svg)
 
 I never allow the model to write directly to the document or create bibliography metadata. It may select supplied source IDs or propose text inside a schema; I keep provider hydration, source validation, edit application, integrity checks, persistence, and rendering in ordinary code.
+
+I evaluated Mastra and Vercel AI SDK before keeping the official OpenAI SDK and a small domain-specific orchestrator. The full tradeoff is documented in [Why I use the OpenAI SDK directly](SYSTEM_DESIGN.md#why-i-use-the-openai-sdk-directly).
 
 ## Citation safety contract
 
