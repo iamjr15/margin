@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ReferenceRecord, WorkSource } from "@/lib/domain";
-import { fetchProviderJson, normalizedDoi } from "@/lib/scholarly/shared";
+import { createRequestThrottle, fetchProviderJson, normalizedDoi } from "@/lib/scholarly/shared";
 
 const BASE_URL = "https://api.semanticscholar.org/graph/v1";
 const RECOMMENDATIONS_URL = "https://api.semanticscholar.org/recommendations/v1";
 const FIELDS = "paperId,title,abstract,authors,year,venue,url,externalIds";
+const beforeSemanticScholarRequest = createRequestThrottle(1_100);
 
 const S2PaperSchema = z.object({
   paperId: z.string(),
@@ -59,6 +60,7 @@ export async function batchResolveSemanticScholar(
       headers: { "Content-Type": "application/json", ...semanticScholarHeaders() },
       body: JSON.stringify({ ids }),
     },
+    beforeSemanticScholarRequest,
   );
   const parsed = S2BatchSchema.safeParse(payload);
   const resolved = new Map<string, WorkSource>();
@@ -79,6 +81,7 @@ export async function searchSemanticScholar(query: string, limit = 8): Promise<W
     `s2:search:${hash(query)}:${limit}`,
     url.toString(),
     { headers: semanticScholarHeaders() },
+    beforeSemanticScholarRequest,
   );
   const parsed = S2SearchSchema.safeParse(payload);
   return parsed.success ? parsed.data.data.map((paper) => toSource(paper, "title-search")) : [];
@@ -95,6 +98,7 @@ export async function recommendWithSemanticScholar(seedIds: string[]): Promise<W
       headers: { "Content-Type": "application/json", ...semanticScholarHeaders() },
       body: JSON.stringify({ positivePaperIds: ids, negativePaperIds: [] }),
     },
+    beforeSemanticScholarRequest,
   );
   const parsed = S2RecommendationsSchema.safeParse(payload);
   return parsed.success
@@ -107,6 +111,7 @@ async function fetchS2Paper(identifier: string) {
     `s2:paper:${identifier.toLowerCase()}`,
     `${BASE_URL}/paper/${encodeURIComponent(identifier)}?fields=${encodeURIComponent(FIELDS)}`,
     { headers: semanticScholarHeaders() },
+    beforeSemanticScholarRequest,
   );
   const parsed = S2PaperSchema.safeParse(payload);
   return parsed.success ? parsed.data : null;

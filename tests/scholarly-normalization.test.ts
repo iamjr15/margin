@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkSource } from "@/lib/domain";
 import { reconstructAbstract } from "@/lib/scholarly/openalex";
-import { mergeSources } from "@/lib/scholarly/shared";
+import { createRequestThrottle, mergeSources } from "@/lib/scholarly/shared";
 
 describe("scholarly normalization", () => {
   it("reconstructs OpenAlex abstracts by token position", () => {
@@ -27,6 +27,19 @@ describe("scholarly normalization", () => {
     expect(merged[0]?.providers).toEqual(["semantic-scholar", "openalex"]);
     expect(merged[0]?.providerIds).toEqual({ semanticScholar: "s2-1", openAlex: "W1" });
     expect(merged[0]?.abstract).toBe("A longer abstract with more complete evidence.");
+  });
+
+  it("serializes provider requests below a configured rate limit", async () => {
+    const throttle = createRequestThrottle(20);
+    const started: number[] = [];
+
+    await Promise.all([1, 2, 3].map(async () => {
+      await throttle();
+      started.push(Date.now());
+    }));
+
+    expect(started[1]! - started[0]!).toBeGreaterThanOrEqual(18);
+    expect(started[2]! - started[1]!).toBeGreaterThanOrEqual(18);
   });
 });
 

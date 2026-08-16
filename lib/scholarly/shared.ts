@@ -7,12 +7,14 @@ export async function fetchProviderJson<T>(
   cacheKey: string,
   url: string,
   init?: RequestInit,
+  beforeRequest?: () => Promise<void>,
 ): Promise<T | null> {
   const cached = getCachedJson<T>(cacheKey);
   if (cached) return cached;
   let lastResponse: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
+      await beforeRequest?.();
       const response = await fetch(url, {
         ...init,
         headers: { Accept: "application/json", ...init?.headers },
@@ -33,6 +35,19 @@ export async function fetchProviderJson<T>(
   }
   if (lastResponse && lastResponse.status >= 400 && lastResponse.status < 500) return null;
   throw new Error(`Provider request failed: ${new URL(url).hostname}`);
+}
+
+export function createRequestThrottle(minimumIntervalMs: number): () => Promise<void> {
+  let queue = Promise.resolve();
+  let nextRequestAt = 0;
+  return () => {
+    const turn = queue.then(async () => {
+      await wait(Math.max(0, nextRequestAt - Date.now()));
+      nextRequestAt = Date.now() + minimumIntervalMs;
+    });
+    queue = turn.catch(() => undefined);
+    return turn;
+  };
 }
 
 export function mergeSources(sources: WorkSource[]): WorkSource[] {

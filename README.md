@@ -38,7 +38,7 @@ docker compose up --build
 
 Open [http://localhost:3000](http://localhost:3000). Compose waits for GROBID's health check before starting the web service.
 
-`SEMANTIC_SCHOLAR_API_KEY` is optional. `OPENALEX_API_KEY` is optional for light use but recommended for stable quotas. With no OpenAI key, the app labels and uses a deterministic review/edit fallback instead of hiding the limitation.
+`SEMANTIC_SCHOLAR_API_KEY` is optional. When configured, all Semantic Scholar endpoints and retries share a 1.1-second request gate to remain below the free-key one-request-per-second limit. `OPENALEX_API_KEY` is optional for light use but recommended for stable quotas. With no OpenAI key, the app labels and uses a deterministic review/edit fallback instead of hiding the limitation.
 
 ### Local development
 

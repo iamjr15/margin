@@ -208,7 +208,7 @@ Both adapters return the same `WorkSource`:
 - retrieval method; and
 - a CSL item.
 
-Calls have 20-second timeouts, at most three attempts, exponential backoff with jitter, `Retry-After` support, and a seven-day SQLite cache. A failure from one provider does not erase results from the other.
+Calls have 20-second timeouts, at most three attempts, exponential backoff with jitter, `Retry-After` support, and a seven-day SQLite cache. Every Semantic Scholar endpoint and retry also shares one process-wide 1.1-second request gate, keeping authenticated traffic below its one-request-per-second quota even when the orchestrator starts independent work concurrently. A failure from one provider does not erase results from the other.
 
 ### Existing-citation resolution
 
