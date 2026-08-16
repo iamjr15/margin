@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, ShieldCheck } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { useState } from "react";
 
 const SUGGESTIONS = [
@@ -58,8 +58,6 @@ export function CommandComposer({
           value={command}
         />
         <div className="composer-footer">
-          <span><ShieldCheck aria-hidden="true" size={13} /> Citation-safe operations</span>
-          <span className="composer-model">OpenAI · grounded</span>
           <button
             aria-label="Create edit proposal"
             disabled={disabled || command.trim().length < 3}

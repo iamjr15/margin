@@ -271,12 +271,6 @@ button { color: inherit; }
 .status-dot.active { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .status-dot.complete { background: var(--green); }
 
-.rail-bottom { margin-top: auto; }
-.rail-integrity { display: flex; width: 32px; min-height: 32px; align-items: center; gap: 10px; color: var(--green); padding: 0 8px; white-space: nowrap; }
-.stage-panel[data-expanded="true"] .rail-integrity { width: 232px; }
-.rail-integrity svg { flex: 0 0 auto; }
-.rail-integrity .rail-label { font-size: 10px; font-weight: 650; }
-
 /* Launch */
 .upload-page {
   display: flex;
@@ -439,9 +433,7 @@ button { color: inherit; }
 .command-composer textarea { width: 100%; min-height: 48px; resize: none; border: 0; background: transparent; color: var(--ink); padding: 3px; font-size: 11px; line-height: 1.5; }
 .command-composer textarea::placeholder { color: var(--ink-faint); }
 .composer-footer { display: flex; align-items: center; gap: 8px; }
-.composer-footer > span { display: flex; align-items: center; gap: 5px; color: var(--ink-faint); font-size: 8px; }
-.composer-footer .composer-model { margin-left: auto; color: var(--ink-soft); }
-.composer-footer button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 50%; background: var(--ink); color: white; cursor: pointer; transition: transform 150ms ease-out, opacity 150ms ease-out; }
+.composer-footer button { display: grid; width: 32px; height: 32px; margin-left: auto; place-items: center; border: 0; border-radius: 50%; background: var(--ink); color: white; cursor: pointer; transition: transform 150ms ease-out, opacity 150ms ease-out; }
 .composer-footer button:active:not(:disabled) { transform: scale(.96); }
 .composer-footer button:disabled { cursor: not-allowed; opacity: .24; }
 
@@ -590,7 +582,7 @@ button { color: inherit; }
   }
 
   .rail-brand { width: 34px !important; }
-  .rail-menu, .rail-close, .rail-drawer, .rail-bottom { display: none; }
+  .rail-menu, .rail-close, .rail-drawer { display: none; }
   .rail-navigation { flex: 1; flex-direction: row; justify-content: flex-end; gap: 3px; margin: 0; }
   .rail-navigation button,
   .stage-panel[data-expanded="true"] .rail-navigation button { width: 40px; min-height: 40px; justify-content: center; padding: 0; }
@@ -646,7 +638,6 @@ button { color: inherit; }
   .composer-region { position: fixed; right: 8px; bottom: 8px; left: 8px; }
   .suggestion-row { display: none; }
   .command-composer textarea { font-size: 16px; }
-  .composer-footer .composer-model { display: none; }
   .composer-footer button, .thread-primary-action, .proposal-actions .action-button { min-height: 44px; }
   .paper-identity { display: none; }
   .paper-toolbar { justify-content: center; }

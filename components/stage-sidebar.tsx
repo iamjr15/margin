@@ -7,7 +7,6 @@ import {
   MessageCircle,
   PanelRight,
   Plus,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -94,13 +93,6 @@ export function StageSidebar({
           </ol>
         </div>
       ) : null}
-
-      <div className="rail-bottom">
-        <div className="rail-integrity" title="Citation anchors are protected">
-          <ShieldCheck aria-hidden="true" size={16} />
-          <span className="rail-label">Citation-safe edits</span>
-        </div>
-      </div>
     </aside>
   );
 }
