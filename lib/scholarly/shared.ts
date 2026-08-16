@@ -1,4 +1,4 @@
-import type { WorkSource } from "@/lib/domain";
+import type { Paper, WorkSource } from "@/lib/domain";
 import { getCachedJson, setCachedJson } from "@/lib/repository";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -81,9 +81,34 @@ export function normalizedDoi(value: string | undefined): string | undefined {
 export function normalizedTitle(value: string): string {
   return value
     .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
     .replace(/[^A-Za-z0-9]+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+export function isUploadedPaper(
+  source: WorkSource,
+  paper: Pick<Paper, "title" | "identifiers"> & Partial<Pick<Paper, "authors">>,
+): boolean {
+  const sourceDoi = normalizedDoi(source.doi);
+  const paperDoi = normalizedDoi(paper.identifiers.doi);
+  if (sourceDoi && paperDoi && sourceDoi === paperDoi) return true;
+  const sourceTitle = normalizedTitle(source.title);
+  const paperTitle = normalizedTitle(paper.title);
+  if (!sourceTitle || !paperTitle) return false;
+  if (sourceTitle === paperTitle) return true;
+  const titleVariant =
+    sourceTitle.length >= 14 &&
+    (paperTitle.startsWith(`${sourceTitle} `) || sourceTitle.startsWith(`${paperTitle} `));
+  if (!titleVariant || !source.authors.length || !paper.authors?.length) return false;
+  const paperAuthors = new Set(paper.authors.map(authorFamily).filter(Boolean));
+  return source.authors.some((author) => paperAuthors.has(authorFamily(author)));
+}
+
+function authorFamily(value: string): string {
+  const commaFamily = value.includes(",") ? value.split(",", 1)[0] : undefined;
+  return normalizedTitle(commaFamily ?? value).split(" ").at(-1) ?? "";
 }
 
 function workKey(source: WorkSource): string {

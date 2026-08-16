@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { WorkSource } from "@/lib/domain";
 import { reconstructAbstract } from "@/lib/scholarly/openalex";
-import { createRequestThrottle, mergeSources } from "@/lib/scholarly/shared";
+import {
+  createRequestThrottle,
+  isUploadedPaper,
+  mergeSources,
+  normalizedTitle,
+} from "@/lib/scholarly/shared";
 
 describe("scholarly normalization", () => {
+  it("normalizes title diacritics without splitting a word", () => {
+    expect(normalizedTitle("Gödel machine")).toBe(normalizedTitle("Godel machine"));
+  });
+
   it("reconstructs OpenAlex abstracts by token position", () => {
     expect(
       reconstructAbstract({ reliable: [2], systems: [3], Evidence: [0], preserving: [1] }),
@@ -40,6 +49,34 @@ describe("scholarly normalization", () => {
 
     expect(started[1]! - started[0]!).toBeGreaterThanOrEqual(18);
     expect(started[2]! - started[1]!).toBeGreaterThanOrEqual(18);
+  });
+
+  it("filters the uploaded paper from related-work recommendations", () => {
+    const paper = {
+      title: "Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents",
+      authors: ["Jigyasa Patel", "Jeff Clune"],
+      identifiers: { doi: "10.1000/dgm" },
+    };
+    expect(isUploadedPaper(source({ title: paper.title, doi: undefined }), paper)).toBe(true);
+    expect(isUploadedPaper(source({ title: "Different work", doi: "10.1000/dgm" }), paper)).toBe(true);
+    expect(isUploadedPaper(source({ title: "Different work", doi: "10.1000/other" }), paper)).toBe(false);
+    expect(isUploadedPaper(source({
+      title: "Darwin Gödel Machine",
+      authors: ["Jigyasa Patel"],
+      doi: undefined,
+    }), paper)).toBe(true);
+  });
+
+  it("recognizes the uploaded paper across diacritics and provider author ordering", () => {
+    expect(isUploadedPaper(source({
+      title: "Darwin Godel Machine: Open-Ended Evolution of Self-Improving Agents",
+      authors: ["Zhang, Jenny", "Hu, Shengran"],
+      doi: undefined,
+    }), {
+      title: "DARWIN GÖDEL MACHINE: OPEN-ENDED EVOLUTION OF SELF-IMPROVING AGENTS",
+      authors: ["Jenny Zhang", "Shengran Hu"],
+      identifiers: {},
+    })).toBe(true);
   });
 });
 

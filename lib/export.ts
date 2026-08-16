@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { strToU8, zipSync } from "fflate";
-import type { CslItem, Paper, Paragraph, Sentence } from "@/lib/domain";
+import { groupInlineNodes, type CslItem, type Paper, type Paragraph, type Sentence } from "@/lib/domain";
 import { assertCitationIntegrity } from "@/lib/invariants";
 import { ensureExportDirectory } from "@/lib/storage";
 import { AppError } from "@/lib/errors";
@@ -63,7 +63,11 @@ export async function exportPaper(
     "--standalone",
   ];
   await run("pandoc", [...common, "--to=latex", `--output=${texPath}`], runDirectory);
-  const pdfEngine = (await commandExists("tectonic")) ? "tectonic" : "pdflatex";
+  const pdfEngine = (await commandExists("xelatex"))
+    ? "xelatex"
+    : (await commandExists("tectonic"))
+      ? "tectonic"
+      : "pdflatex";
   await run(
     "pandoc",
     [...common, `--pdf-engine=${pdfEngine}`, `--output=${pdfPath}`],
@@ -71,9 +75,10 @@ export async function exportPaper(
     pdfEngine === "tectonic" ? { TECTONIC_UNTRUSTED_MODE: "1" } : undefined,
   );
 
-  const [pdf, tex, referenceJson, report, csl] = await Promise.all([
+  const [pdf, tex, sourceMarkdown, referenceJson, report, csl] = await Promise.all([
     readFile(pdfPath),
     readFile(texPath),
+    readFile(markdownPath),
     readFile(referencesPath),
     readFile(reportPath),
     readFile(stylePath),
@@ -82,6 +87,7 @@ export async function exportPaper(
     {
       "revised-paper.pdf": new Uint8Array(pdf),
       "revised-paper.tex": new Uint8Array(tex),
+      "revised-paper.md": new Uint8Array(sourceMarkdown),
       "references.json": new Uint8Array(referenceJson),
       "validation-report.json": new Uint8Array(report),
       [`styles/${styleName}.csl`]: new Uint8Array(csl),
@@ -118,14 +124,33 @@ export function serializePaperToPandoc(paper: Paper): string {
 }
 
 function renderParagraphs(paragraphs: Paragraph[]): string {
-  return paragraphs.map((paragraph) => paragraph.sentences.map(renderSentence).join(" ")).join("\n\n");
+  return paragraphs
+    .map((paragraph) => {
+      if (paragraph.kind === "code") return fencedCode(renderCodeParagraph(paragraph));
+      return paragraph.sentences.map(renderSentence).join(" ");
+    })
+    .join("\n\n");
+}
+
+function renderCodeParagraph(paragraph: Paragraph): string {
+  return paragraph.sentences
+    .map((sentence) =>
+      sentence.nodes
+        .map((node) => (node.type === "text" ? node.value : node.raw))
+        .join(""),
+    )
+    .join("\n");
 }
 
 function renderSentence(sentence: Sentence): string {
-  return sentence.nodes
-    .map((node) => {
-      if (node.type === "text") return escapeMarkdown(node.value.trim());
-      return ` [${node.referenceIds.map((id) => `@${id}`).join("; ")}]`;
+  return groupInlineNodes(sentence.nodes)
+    .map((group) => {
+      if (group.type === "text") return escapeMarkdown(group.value);
+      const referenceIds = [...new Set(group.citations.flatMap((citation) => citation.referenceIds))];
+      if (!referenceIds.length) {
+        return escapeMarkdown(group.citations.map((citation) => citation.raw).join(" "));
+      }
+      return ` [${referenceIds.map((id) => `@${id}`).join("; ")}]`;
     })
     .join("")
     .replace(/\s+([,.;:!?])/g, "$1")
@@ -196,10 +221,18 @@ function yamlString(value: string): string {
 }
 
 function escapeMarkdown(value: string): string {
-  const escaped = value.replace(/([\\`*_[\]<>])/g, "\\$1");
+  const escaped = value
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .replace(/([\\`*_[\]<>@])/g, "\\$1");
   return escaped.replace(/[⋉⊂∂φ∈□⊆∩≥′πψ→∆↔Ξ≤∪]/g, (symbol) =>
     MATH_SYMBOLS[symbol] ?? symbol,
   );
+}
+
+function fencedCode(value: string): string {
+  const longestFence = Math.max(3, ...[...value.matchAll(/~+/g)].map((match) => match[0].length + 1));
+  const fence = "~".repeat(longestFence);
+  return `${fence}\n${value.trim()}\n${fence}`;
 }
 
 const MATH_SYMBOLS: Record<string, string> = {

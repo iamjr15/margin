@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:corpus": "node scripts/audit-corpus.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

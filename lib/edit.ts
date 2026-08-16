@@ -16,7 +16,7 @@ import { AppError } from "@/lib/errors";
 import { assertCitationIntegrity, assertProposalOperations } from "@/lib/invariants";
 import { getOpenAI, hasModelAccess, modelName } from "@/lib/model";
 import { discoverWorks } from "@/lib/scholarly/academic-search";
-import { normalizedDoi, normalizedTitle } from "@/lib/scholarly/shared";
+import { isUploadedPaper, normalizedDoi, normalizedTitle } from "@/lib/scholarly/shared";
 
 const PlannerSchema = z.strictObject({
   intent: z.enum(["SHORTEN_SECTION", "ADD_CITATIONS", "ADD_SOURCED_CLAIM", "UNSUPPORTED"]),
@@ -31,6 +31,15 @@ const RewriteSchema = z.strictObject({
 const SourcedClaimSchema = z.strictObject({
   sourceId: z.string(),
   text: z.string(),
+});
+
+const CitationMatchesSchema = z.strictObject({
+  matches: z.array(z.strictObject({
+    sentenceId: z.string(),
+    sourceId: z.string(),
+    rationale: z.string(),
+    evidence: z.string(),
+  })),
 });
 
 type EditPlan = z.infer<typeof PlannerSchema>;
@@ -187,23 +196,199 @@ async function proposeCitations(section: Section, paper: Paper, goal: string): P
   const targets = section.paragraphs
     .flatMap((paragraph) => paragraph.sentences)
     .filter((sentence) => sentenceText(sentence).length >= 45 && sentenceCitationIds(sentence).length === 0)
-    .slice(0, 2);
+    .slice(0, 8);
   if (!targets.length) {
     throw new AppError("no_uncited_claims", "No uncited claims were found in that section.", 422);
   }
-  const query = [paper.title, section.title, goal, ...targets.map(sentenceText)].join(". ").slice(0, 1_800);
+  const query = citationDiscoveryQuery(paper, section, goal, targets);
   const discovery = await discoverWorks(query, []);
   const candidates = excludeExisting(discovery.sources, paper)
     .filter((source) => source.abstract)
-    .slice(0, targets.length);
+    .slice(0, 8);
   if (!candidates.length) {
     throw new AppError("no_sources_found", "The academic providers returned no verifiable sources.", 422);
   }
-  return targets.slice(0, candidates.length).map((sentence, index) => ({
-    type: "add-citation",
-    sentenceId: sentence.id,
-    source: candidates[index] as WorkSource,
-  }));
+  const matches = await selectCitationMatches(targets, candidates);
+  if (!matches.length) {
+    throw new AppError(
+      "no_supported_citations",
+      "Sources were found, but none had abstract evidence matching an uncited claim in that section.",
+      422,
+    );
+  }
+  return matches;
+}
+
+async function selectCitationMatches(
+  targets: Sentence[],
+  sources: WorkSource[],
+): Promise<Array<Extract<EditOperation, { type: "add-citation" }>>> {
+  if (hasModelAccess()) {
+    try {
+      const response = await getOpenAI().responses.parse({
+        model: modelName(),
+        input: [
+          {
+            role: "system",
+            content:
+              "Match each claim to at most one supplied source. A match is valid only when the supplied abstract supports the claim's core assertion, not merely the same broad topic. Explain the specific connection in one short sentence and copy one exact contiguous abstract excerpt as evidence. Use only supplied sentence and source IDs. Omit weak matches.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              claims: targets.map((sentence) => ({ id: sentence.id, text: sentenceText(sentence) })),
+              sources: sources.map((source) => ({ id: source.id, title: source.title, abstract: source.abstract })),
+            }),
+          },
+        ],
+        text: { format: zodTextFormat(CitationMatchesSchema, "citation_matches") },
+      });
+      const validated = validateCitationMatches(response.output_parsed?.matches ?? [], targets, sources);
+      if (validated.length) return validated.slice(0, 2);
+    } catch {
+      // The deterministic matcher still requires exact abstract evidence.
+    }
+  }
+  return fallbackCitationMatches(targets, sources);
+}
+
+function validateCitationMatches(
+  matches: z.infer<typeof CitationMatchesSchema>["matches"],
+  targets: Sentence[],
+  sources: WorkSource[],
+): Array<Extract<EditOperation, { type: "add-citation" }>> {
+  const targetMap = new Map(targets.map((sentence) => [sentence.id, sentence]));
+  const sourceMap = new Map(sources.map((source) => [source.id, source]));
+  const usedSentences = new Set<string>();
+  const usedSources = new Set<string>();
+  return matches.flatMap((match) => {
+    const sentence = targetMap.get(match.sentenceId);
+    const source = sourceMap.get(match.sourceId);
+    const abstract = source?.abstract;
+    const evidence = bestAbstractEvidence(sentence ? sentenceText(sentence) : "", match.evidence.trim());
+    const rationale = match.rationale.replace(/\s+/g, " ").trim().slice(0, 320);
+    if (
+      !sentence || !source || !abstract || !evidence || !rationale ||
+      !abstract.includes(evidence) ||
+      !citationEvidenceSupportsClaim(sentenceText(sentence), evidence) ||
+      usedSentences.has(sentence.id) || usedSources.has(source.id)
+    ) return [];
+    usedSentences.add(sentence.id);
+    usedSources.add(source.id);
+    return [{
+      type: "add-citation" as const,
+      sentenceId: sentence.id,
+      source,
+      claimText: sentenceText(sentence),
+      rationale,
+      evidence,
+    }];
+  });
+}
+
+function fallbackCitationMatches(
+  targets: Sentence[],
+  sources: WorkSource[],
+): Array<Extract<EditOperation, { type: "add-citation" }>> {
+  const candidates = targets.flatMap((sentence) =>
+    sources.flatMap((source) => {
+      const evidence = bestAbstractEvidence(sentenceText(sentence), source.abstract);
+      const terms = evidence ? sharedContentTerms(sentenceText(sentence), evidence) : [];
+      const score = evidence ? citationSupportScore(sentenceText(sentence), evidence) : 0;
+      return evidence && citationEvidenceSupportsClaim(sentenceText(sentence), evidence)
+        ? [{ sentence, source, evidence, terms, score }]
+        : [];
+    }),
+  ).sort((left, right) => right.score - left.score || right.terms.length - left.terms.length);
+  const usedSentences = new Set<string>();
+  const usedSources = new Set<string>();
+  return candidates.flatMap(({ sentence, source, evidence, terms }) => {
+    if (usedSentences.has(sentence.id) || usedSources.has(source.id)) return [];
+    usedSentences.add(sentence.id);
+    usedSources.add(source.id);
+    const concepts = sharedConcepts(sentenceText(sentence), evidence).slice(0, 3).join(", ");
+    return [{
+      type: "add-citation" as const,
+      sentenceId: sentence.id,
+      source,
+      claimText: sentenceText(sentence),
+      rationale: `The quoted abstract evidence covers the claim's core concepts: ${concepts}.`,
+      evidence,
+    }];
+  }).slice(0, 2);
+}
+
+function bestAbstractEvidence(claim: string, abstract: string | null): string | undefined {
+  if (!abstract) return undefined;
+  return abstract
+    .split(/(?<=[.!?])\s+/)
+    .map((evidence) => ({ evidence: evidence.trim(), score: citationSupportScore(claim, evidence) }))
+    .filter(({ evidence }) => evidence.length >= 24)
+    .sort((left, right) => right.score - left.score)[0]?.evidence;
+}
+
+const CONTENT_STOP_WORDS = new Set([
+  "about", "advanced", "after", "also", "approach", "based", "because", "been", "before", "being",
+  "between", "both", "built", "could", "during", "each", "from", "have", "into", "model", "models",
+  "more", "other", "over", "paper", "results", "same", "such", "system", "systems", "than", "that",
+  "their", "these", "they", "this", "through", "using", "were", "which", "while", "with", "work",
+  "would",
+]);
+
+function citationEvidenceSupportsClaim(claim: string, evidence: string): boolean {
+  const shared = sharedContentTerms(claim, evidence);
+  const claimTerms = [...new Set(contentTerms(claim))];
+  const coverage = shared.length / Math.max(1, Math.min(claimTerms.length, 8));
+  return shared.length >= 2 && coverage >= 0.3;
+}
+
+function citationSupportScore(claim: string, evidence: string): number {
+  const shared = sharedContentTerms(claim, evidence).length;
+  const claimTerms = [...new Set(contentTerms(claim))].length;
+  return shared + shared / Math.max(1, claimTerms);
+}
+
+function sharedConcepts(left: string, right: string): string[] {
+  const rightPairs = new Set(contentPairs(right));
+  const pairs = contentPairs(left).filter((pair) => rightPairs.has(pair));
+  const pairedTerms = new Set(pairs.flatMap((pair) => pair.split(" ")));
+  const unpaired = sharedContentTerms(left, right).filter((term) => !pairedTerms.has(term));
+  return [...pairs.map((pair) => pair === "open ended" ? "open-ended" : pair), ...unpaired];
+}
+
+function contentPairs(value: string): string[] {
+  const terms = contentTerms(value);
+  return terms.slice(0, -1).map((term, index) => `${term} ${terms[index + 1]}`);
+}
+
+function citationDiscoveryQuery(
+  paper: Paper,
+  section: Section,
+  goal: string,
+  targets: Sentence[],
+): string {
+  const perClaimTerms = targets.map((sentence) => contentTerms(sentenceText(sentence)));
+  const roundRobinTerms: string[] = [];
+  for (let termIndex = 0; termIndex < 5; termIndex += 1) {
+    for (const terms of perClaimTerms) {
+      const term = terms[termIndex];
+      if (term && !roundRobinTerms.includes(term)) roundRobinTerms.push(term);
+    }
+  }
+  return [paper.title, section.title, goal, roundRobinTerms.slice(0, 32).join(" ")]
+    .join(". ")
+    .slice(0, 700);
+}
+
+function sharedContentTerms(left: string, right: string): string[] {
+  const rightTerms = new Set(contentTerms(right));
+  return [...new Set(contentTerms(left).filter((term) => rightTerms.has(term)))];
+}
+
+function contentTerms(value: string): string[] {
+  return normalizedTitle(value)
+    .split(" ")
+    .filter((term) => term.length >= 4 && !CONTENT_STOP_WORDS.has(term));
 }
 
 async function proposeSourcedClaim(
@@ -320,6 +505,7 @@ function applySourcedSentence(
   };
   const paragraph = paragraphs.at(-1) ?? {
     id: `added-paragraph-${randomUUID()}`,
+    kind: "prose" as const,
     sentences: [],
   };
   if (!paragraphs.length) paragraphs.push(paragraph);
@@ -382,6 +568,7 @@ function excludeExisting(sources: WorkSource[], paper: Paper): WorkSource[] {
   const titles = new Set(paper.references.map((reference) => normalizedTitle(reference.csl.title ?? "")).filter(Boolean));
   return sources.filter(
     (source) =>
+      !isUploadedPaper(source, paper) &&
       (!source.doi || !dois.has(normalizedDoi(source.doi))) && !titles.has(normalizedTitle(source.title)),
   );
 }

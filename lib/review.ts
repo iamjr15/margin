@@ -12,7 +12,12 @@ import {
 } from "@/lib/domain";
 import { getOpenAI, hasModelAccess, modelName } from "@/lib/model";
 import { discoverWorks, resolveReferences } from "@/lib/scholarly/academic-search";
-import { mergeSources, normalizedDoi, normalizedTitle } from "@/lib/scholarly/shared";
+import {
+  isUploadedPaper,
+  mergeSources,
+  normalizedDoi,
+  normalizedTitle,
+} from "@/lib/scholarly/shared";
 
 const ModelReviewSchema = z.strictObject({
   citationMatches: z.array(
@@ -64,6 +69,7 @@ export async function reviewPaper(
     .filter((id): id is string => Boolean(id));
   const discovery = await discoverWorks(query, seedIds);
   const discovered = excludeExistingWorks(discovery.sources, paper).slice(0, 12);
+  const eligibleMissingSourceIds = new Set(discovered.map((source) => source.id));
   const sources = mergeSources([...resolution.sources, ...discovered]);
   const claims: ClaimInput[] = cited.map((sentence) => ({
     sentenceId: sentence.id,
@@ -82,15 +88,16 @@ export async function reviewPaper(
   let findings: ReviewFinding[];
   if (hasModelAccess()) {
     try {
-      findings = await modelFindings(claims, missingClaims, sources);
+      findings = await modelFindings(claims, missingClaims, sources, eligibleMissingSourceIds);
     } catch {
       engine = "deterministic-fallback";
       usedModelFallback = true;
-      findings = fallbackFindings(claims, missingClaims, sources);
+      findings = fallbackFindings(claims, missingClaims, sources, eligibleMissingSourceIds);
     }
   } else {
-    findings = fallbackFindings(claims, missingClaims, sources);
+    findings = fallbackFindings(claims, missingClaims, sources, eligibleMissingSourceIds);
   }
+  findings = finalizeReviewFindings(findings, eligibleMissingSourceIds);
   return {
     id: randomUUID(),
     documentId,
@@ -125,12 +132,14 @@ async function modelFindings(
   citedClaims: ClaimInput[],
   missingClaims: ClaimInput[],
   sources: WorkSource[],
+  eligibleMissingSourceIds: ReadonlySet<string>,
 ): Promise<ReviewFinding[]> {
   const sourceCatalog = sources.map((source) => ({
     id: source.id,
     title: source.title,
     abstract: source.abstract,
     year: source.year,
+    eligibleForMissingWork: eligibleMissingSourceIds.has(source.id),
   }));
   const response = await getOpenAI().responses.parse({
     model: modelName(),
@@ -138,7 +147,7 @@ async function modelFindings(
       {
         role: "system",
         content:
-          "You are a conservative academic reviewer. Use only supplied source IDs. Judge citation support only from the supplied abstract. Evidence must be an exact contiguous substring of that abstract. If the abstract is absent or insufficient, return INSUFFICIENT_ABSTRACT. Missing-work suggestions must select a supplied source that directly relates to the claim. Do not invent metadata or references.",
+          "You are a conservative academic reviewer. Use only supplied source IDs. Judge citation support only from the supplied abstract. Evidence must be an exact contiguous substring of that abstract. If the abstract is absent or insufficient, return INSUFFICIENT_ABSTRACT. Missing-work suggestions must select a directly related source where eligibleForMissingWork is true. Do not invent metadata or references.",
       },
       {
         role: "user",
@@ -202,6 +211,7 @@ function fallbackFindings(
   citedClaims: ClaimInput[],
   missingClaims: ClaimInput[],
   sources: WorkSource[],
+  eligibleMissingSourceIds: ReadonlySet<string>,
 ): ReviewFinding[] {
   const sourceMap = new Map(sources.map((source) => [source.id, source]));
   const matches = citedClaims.flatMap((claim): ReviewFinding[] => {
@@ -232,9 +242,9 @@ function fallbackFindings(
       },
     ];
   });
-  const alreadyUsed = new Set(citedClaims.flatMap((claim) => claim.citedSourceIds));
+  const eligibleSources = sources.filter((source) => eligibleMissingSourceIds.has(source.id));
   const suggestions = missingClaims.slice(0, 2).flatMap((claim, index): ReviewFinding[] => {
-    const source = sources.filter((candidate) => !alreadyUsed.has(candidate.id))[index];
+    const source = eligibleSources[index];
     if (!source) return [];
     return [
       {
@@ -251,6 +261,29 @@ function fallbackFindings(
   return [...matches, ...suggestions];
 }
 
+export function finalizeReviewFindings(
+  findings: ReviewFinding[],
+  eligibleMissingSourceIds: ReadonlySet<string>,
+): ReviewFinding[] {
+  const seen = new Set<string>();
+  return findings.filter((finding) => {
+    const sourceKey = [...finding.sourceIds].sort().join("|");
+    if (finding.kind === "missing-work") {
+      if (!finding.sourceIds.length || finding.sourceIds.some((id) => !eligibleMissingSourceIds.has(id))) {
+        return false;
+      }
+      const key = `missing-work:${sourceKey}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }
+    const key = `${finding.kind}:${finding.sentenceId ?? ""}:${sourceKey}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function buildDiscoveryQuery(paper: Paper, claims: string[]): string {
   const section = paper.sections.find((candidate) => candidate.title)?.title ?? "";
   const fallback = paper.abstract.flatMap((paragraph) => paragraph.sentences).map(sentenceText).join(" ");
@@ -262,6 +295,7 @@ function excludeExistingWorks(sources: WorkSource[], paper: Paper): WorkSource[]
   const existingTitles = new Set(paper.references.map((reference) => normalizedTitle(reference.csl.title ?? "")).filter(Boolean));
   return sources.filter(
     (source) =>
+      !isUploadedPaper(source, paper) &&
       (!source.doi || !existingDois.has(normalizedDoi(source.doi))) &&
       !existingTitles.has(normalizedTitle(source.title)),
   );

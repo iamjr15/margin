@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="650" viewBox="0 0 1400 650" role="img" aria-labelledby="title description">
+  <title id="title">Document workflow state transitions</title>
+  <desc id="description">The primary lifecycle moves from uploaded to parsing to ready. Parsing can require OCR or fail. Review, edit, and export are temporary cycles that always return to ready.</desc>
+  <defs>
+    <marker id="arrow" markerHeight="9" markerWidth="9" orient="auto" refX="8" refY="4.5"><path d="M0 0 9 4.5 0 9Z" fill="#77736a" /></marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" flood-color="#1d1d1a" flood-opacity="0.08" stdDeviation="6" /></filter>
+    <style>
+      .state{fill:#fff;stroke:#d3cfc5;stroke-width:1.5;filter:url(#shadow)}.ready{fill:#edf8f2;stroke:#73b28f}.active{fill:#f3effb;stroke:#a795c7}.warn{fill:#fff7e8;stroke:#e4bd58}.fail{fill:#fff1ef;stroke:#d7867b}.group{fill:#fff;stroke:#d8d4ca;stroke-width:1.5}.line{fill:none;stroke:#77736a;stroke-linecap:round;stroke-width:2.2;marker-end:url(#arrow)}.branch{fill:none;stroke:#918d83;stroke-linecap:round;stroke-width:1.8;marker-end:url(#arrow)}.title{fill:#1d1d1a;font:700 29px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.subtitle{fill:#706c63;font:400 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.label{fill:#24231f;font:700 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-anchor:middle}.detail{fill:#706c63;font:400 11.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-anchor:middle}.section{fill:#77736a;font:700 11px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.08em}.edge{fill:#77736a;font:700 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mini{fill:#edf8f2;stroke:#73b28f;stroke-width:1.3}.minitext{fill:#3f6f54;font:700 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1400" height="650" rx="24" fill="#f2f0ea" />
+  <text class="title" x="42" y="50">Persistence and document states</text>
+  <text class="subtitle" x="42" y="76">The main lifecycle is linear; review, editing, and export are isolated cycles around the canonical READY state.</text>
+
+  <rect class="group" x="32" y="105" width="792" height="500" rx="18" />
+  <text class="section" x="58" y="138">PRIMARY LIFECYCLE</text>
+  <circle cx="72" cy="220" r="10" fill="#1d1d1a" />
+  <path class="line" d="M82 220H119" />
+  <rect class="state" x="125" y="176" width="180" height="88" rx="44" />
+  <text class="label" x="215" y="215">UPLOADED</text><text class="detail" x="215" y="238">source persisted</text>
+  <path class="line" d="M305 220H354" />
+  <rect class="state active" x="360" y="176" width="180" height="88" rx="44" />
+  <text class="label" x="450" y="215">PARSING</text><text class="detail" x="450" y="238">GROBID + projector</text>
+  <path class="line" d="M540 220H589" />
+  <rect class="state ready" x="595" y="176" width="190" height="88" rx="44" />
+  <text class="label" x="690" y="215">READY</text><text class="detail" x="690" y="238">current version available</text>
+
+  <text class="section" x="58" y="323">PARSING OUTCOMES</text>
+  <path d="M450 264V352H270V375" fill="none" stroke="#918d83" stroke-width="1.8" />
+  <path class="branch" d="M270 352V375" />
+  <path class="branch" d="M450 352H630V375" />
+  <rect class="state warn" x="165" y="380" width="210" height="88" rx="44" />
+  <text class="label" x="270" y="419">NEEDS_OCR</text><text class="detail" x="270" y="442">no usable text layer</text>
+  <rect class="state fail" x="525" y="380" width="210" height="88" rx="44" />
+  <text class="label" x="630" y="419">FAILED</text><text class="detail" x="630" y="442">typed parse error</text>
+  <text class="detail" x="450" y="514">Only successful parsing reaches READY.</text>
+
+  <rect class="group" x="854" y="105" width="514" height="500" rx="18" />
+  <text class="section" x="880" y="138">TEMPORARY OPERATIONS · EACH RETURNS TO READY</text>
+
+  <rect class="mini" x="884" y="174" width="78" height="32" rx="16" /><text class="minitext" x="923" y="195">READY</text>
+  <path class="line" d="M962 190H1001" />
+  <rect class="state active" x="1007" y="153" width="190" height="74" rx="37" /><text class="label" x="1102" y="186">REVIEWING</text><text class="detail" x="1102" y="206">bounded research</text>
+  <path class="line" d="M1197 190H1236" />
+  <rect class="mini" x="1242" y="174" width="78" height="32" rx="16" /><text class="minitext" x="1281" y="195">READY</text>
+  <text class="edge" x="1206" y="174">RESULT STORED</text>
+
+  <rect class="mini" x="884" y="302" width="78" height="32" rx="16" /><text class="minitext" x="923" y="323">READY</text>
+  <path class="line" d="M962 318H1001" />
+  <rect class="state active" x="1007" y="281" width="190" height="74" rx="37" /><text class="label" x="1102" y="314">EDITING</text><text class="detail" x="1102" y="334">proposal planning</text>
+  <path class="line" d="M1197 318H1236" />
+  <rect class="mini" x="1242" y="302" width="78" height="32" rx="16" /><text class="minitext" x="1281" y="323">READY</text>
+  <text class="edge" x="1203" y="302">PROPOSAL WAITING</text>
+
+  <rect class="mini" x="884" y="430" width="78" height="32" rx="16" /><text class="minitext" x="923" y="451">READY</text>
+  <path class="line" d="M962 446H1001" />
+  <rect class="state active" x="1007" y="409" width="190" height="74" rx="37" /><text class="label" x="1102" y="442">EXPORTING</text><text class="detail" x="1102" y="462">citeproc + PDF</text>
+  <path class="line" d="M1197 446H1236" />
+  <rect class="mini" x="1242" y="430" width="78" height="32" rx="16" /><text class="minitext" x="1281" y="451">READY</text>
+  <text class="edge" x="1212" y="430">BUNDLE READY</text>
+
+  <rect x="922" y="535" width="378" height="34" rx="17" fill="#e8e5dd" />
+  <text class="detail" x="1111" y="557">No temporary operation replaces the canonical state.</text>
+</svg>

@@ -21,7 +21,9 @@ async function requestGrobid(url: string, pdf: Uint8Array, filename: string): Pr
   form.append("includeRawCitations", "1");
   form.append("generateIDs", "1");
   form.append("segmentSentences", "1");
-  form.append("teiCoordinates", "ref,biblStruct");
+  for (const structure of ["ref", "biblStruct", "head", "p", "s"]) {
+    form.append("teiCoordinates", structure);
+  }
   try {
     return await fetch(url, {
       method: "POST",

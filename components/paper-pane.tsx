@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BookMarked, Braces, FileDiff, Layers3 } from "lucide-react";
+import { AlertCircle, BookMarked, Braces, ChevronRight, FileCode2, FileDiff, Layers3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
   CitationNode,
@@ -10,6 +10,7 @@ import type {
   ReviewFinding,
   Sentence,
 } from "@/lib/domain";
+import { groupInlineNodes, sentenceText } from "@/lib/domain";
 import { UploadSurface } from "@/components/upload-surface";
 
 type PaperTab = "paper" | "citations" | "changes";
@@ -43,6 +44,12 @@ export function PaperPane({ snapshot, busyLabel, error, onStyleChange, onUpload 
       </header>
       <div className="panel-scroll paper-scroll">
         {busyLabel ? <div className="paper-busy-bar" aria-live="polite"><span />{busyLabel}</div> : null}
+        {error ? (
+          <div className="paper-error" role="alert">
+            <AlertCircle aria-hidden="true" size={16} />
+            <p><strong>Action needed</strong><span>{error}</span></p>
+          </div>
+        ) : null}
         {paper.warnings.length ? (
           <div className="parse-warning">
             <AlertCircle aria-hidden="true" size={16} />
@@ -110,20 +117,103 @@ function Paragraphs({
   findings: Map<string, ReviewFinding[]>;
   style: "numeric" | "author-date" | "unknown";
 }) {
-  return paragraphs.map((paragraph) => (
-    <p className="paper-paragraph" key={paragraph.id}>
-      {paragraph.sentences.map((sentence) => (
-        <SentenceView
-          findings={findings.get(sentence.id) ?? []}
-          key={sentence.id}
-          referenceNumbers={referenceNumbers}
-          references={references}
-          sentence={sentence}
-          style={style}
-        />
-      ))}
-    </p>
-  ));
+  const output: React.ReactNode[] = [];
+  for (let index = 0; index < paragraphs.length;) {
+    const paragraph = paragraphs[index]!;
+    if (paragraph.kind === "code") {
+      const codeParagraphs = [paragraph];
+      while (paragraphs[index + codeParagraphs.length]?.kind === "code") {
+        codeParagraphs.push(paragraphs[index + codeParagraphs.length]!);
+      }
+      output.push(<CodeArtifact key={paragraph.id} paragraphs={codeParagraphs} />);
+      index += codeParagraphs.length;
+      continue;
+    }
+    const content = paragraph.sentences.map((sentence) => (
+      <SentenceView
+        findings={findings.get(sentence.id) ?? []}
+        key={sentence.id}
+        referenceNumbers={referenceNumbers}
+        references={references}
+        sentence={sentence}
+        style={style}
+      />
+    ));
+    output.push(<p className="paper-paragraph" key={paragraph.id}>{content}</p>);
+    index += 1;
+  }
+  return output;
+}
+
+function CodeArtifact({ paragraphs }: { paragraphs: Paragraph[] }) {
+  const entries = paragraphs.map(paragraphText).filter(Boolean);
+  const identifierEntries = entries.map((entry) => entry.replace(/^[•●▪◦*-]\s*/, ""));
+  const isIdentifierList = identifierEntries.length > 1 && identifierEntries.every((entry) =>
+    /^[A-Za-z0-9][\w./:+-]{2,}$/.test(entry),
+  );
+  if (isIdentifierList) {
+    return (
+      <details className="paper-code-disclosure paper-identifier-disclosure">
+        <CodeSummary label="Benchmark instances" meta={`${identifierEntries.length} identifiers · preserved in source order`} />
+        <ul className="paper-identifier-grid">
+          {identifierEntries.map((entry, index) => <li key={`${entry}-${index}`}><code>{entry}</code></li>)}
+        </ul>
+      </details>
+    );
+  }
+
+  const raw = entries.join("\n\n");
+  const formatted = formatExtractedCode(raw);
+  const label = classifyExtractedArtifact(raw);
+  const shouldCollapse = paragraphs.length > 1 || raw.length > 600;
+  if (!shouldCollapse) {
+    return <pre aria-label={label} className="paper-code-block">{formatted}</pre>;
+  }
+  return (
+    <details className="paper-code-disclosure">
+      <CodeSummary label={label} meta={`${formatCharacterCount(raw.length)} · preserved for audit and export`} />
+      <pre className="paper-code-block">{formatted}</pre>
+    </details>
+  );
+}
+
+function CodeSummary({ label, meta }: { label: string; meta: string }) {
+  return (
+    <summary>
+      <FileCode2 aria-hidden="true" size={16} />
+      <span><strong>{label}</strong><small>{meta}</small></span>
+      <ChevronRight aria-hidden="true" className="disclosure-chevron" size={15} />
+    </summary>
+  );
+}
+
+function paragraphText(paragraph: Paragraph): string {
+  return paragraph.sentences.map(sentenceText).join("\n").trim();
+}
+
+function formatCharacterCount(count: number): string {
+  return count >= 1_000 ? `${(count / 1_000).toFixed(1)}k characters` : `${count} characters`;
+}
+
+function classifyExtractedArtifact(value: string): string {
+  if (/(?:^|\s)diff --git\s|(?:^|\s)@@\s+-\d/m.test(value)) return "Extracted Git diff";
+  if (/Coding Agent Summary/i.test(value) && /\b[a-z]+__[a-z]+-\d{3,}\b/i.test(value)) {
+    return "Agent prompt and benchmark appendix";
+  }
+  if (/^def tool_info\s*\(/.test(value)) return "Extracted tool definition";
+  if (/^(?:I'll|I will) run the tests/i.test(value)) return "Extracted agent execution trace";
+  if (/^(?:Within|Augment|Add|Remove|Implement)\b/i.test(value)) return "Extracted feature prompt";
+  return "Extracted technical block";
+}
+
+function formatExtractedCode(value: string): string {
+  return value
+    .replace(/\s+(?=diff --git\s)/g, "\n\n")
+    .replace(/\s+(?=index [0-9a-f]+\.\.[0-9a-f]+\s)/gi, "\n")
+    .replace(/\s+---\s*(?=(?:a\/|\/dev\/null))/g, "\n--- ")
+    .replace(/\s+\+\+\+\s*(?=(?:b\/|\/dev\/null))/g, "\n+++ ")
+    .replace(/\s+(?=@@\s+-\d)/g, "\n")
+    .trim();
 }
 
 function SentenceView({
@@ -149,13 +239,13 @@ function SentenceView({
         : "plain";
   return (
     <span className="paper-sentence" data-tone={tone} id={`sentence-${sentence.id}`}>
-      {sentence.nodes.map((node, index) =>
-        node.type === "text" ? (
-          <span key={`${sentence.id}-text-${index}`}>{node.value}</span>
+      {groupInlineNodes(sentence.nodes).map((group) =>
+        group.type === "text" ? (
+          <span key={`${sentence.id}-${group.key}`}>{group.value}</span>
         ) : (
           <CitationCluster
-            citation={node}
-            key={node.anchorId}
+            citations={group.citations}
+            key={group.key}
             referenceNumbers={referenceNumbers}
             references={references}
             style={style}
@@ -167,26 +257,54 @@ function SentenceView({
 }
 
 function CitationCluster({
-  citation,
+  citations,
   references,
   referenceNumbers,
   style,
 }: {
-  citation: CitationNode;
+  citations: CitationNode[];
   references: Map<string, ReferenceRecord>;
   referenceNumbers: Map<string, number>;
   style: "numeric" | "author-date" | "unknown";
 }) {
-  const labels = citation.referenceIds.map((id) => citationLabel(references.get(id), referenceNumbers.get(id), style));
-  const href = citation.referenceIds.map((id) => references.get(id)?.csl.URL).find(Boolean);
+  const referenceIds = [...new Set(citations.flatMap((citation) => citation.referenceIds))];
+  const unresolved = citations.filter((citation) => citation.referenceIds.length === 0);
+  const labels = referenceIds.map((id) =>
+    citationLabel(references.get(id), referenceNumbers.get(id), style),
+  );
+  if (unresolved.length) {
+    labels.push(
+      ...(style === "numeric"
+        ? unresolved.map(() => "?")
+        : unresolved.map((citation) => citation.raw.replace(/^[\s(;\[]+|[\s;)\]]+$/g, ""))),
+    );
+  }
+  const href =
+    !unresolved.length && referenceIds.length === 1
+      ? references.get(referenceIds[0]!)?.csl.URL
+      : undefined;
   const content = style === "numeric" ? `[${labels.join(", ")}]` : `(${labels.join("; ")})`;
-  return href ? <a className="citation-anchor" href={href} rel="noreferrer" target="_blank" title="Open source">{content}</a> : <span className="citation-anchor unresolved" title="Unresolved citation">{content}</span>;
+  const title = unresolved.length
+    ? `Unresolved citation text: ${unresolved.map((citation) => citation.raw).join(" ")}`
+    : referenceIds.length > 1
+      ? `${referenceIds.length} linked sources`
+      : "Open source";
+  return href ? (
+    <a className="citation-anchor" href={href} rel="noreferrer" target="_blank" title={title}>{content}</a>
+  ) : (
+    <span className={`citation-anchor${unresolved.length ? " unresolved" : ""}`} title={title}>{content}</span>
+  );
 }
 
 function citationLabel(reference: ReferenceRecord | undefined, number: number | undefined, style: string): string {
   if (style === "numeric") return String(number ?? "?");
-  const author = reference?.csl.author?.[0];
-  const name = author?.family ?? author?.literal ?? "Unresolved";
+  const authors = reference?.csl.author ?? [];
+  const names = authors.map((author) => author.family ?? author.literal).filter(Boolean);
+  const name = names.length > 2
+    ? `${names[0]} et al.`
+    : names.length === 2
+      ? `${names[0]} & ${names[1]}`
+      : names[0] ?? "Unresolved";
   const year = reference?.csl.issued?.["date-parts"]?.[0]?.[0] ?? "n.d.";
   return `${name}, ${year}`;
 }

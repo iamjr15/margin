@@ -6,8 +6,10 @@ RUN apt-get update \
     curl \
     lmodern \
     pandoc \
+    texlive-fonts-recommended \
     texlive-latex-base \
     texlive-latex-recommended \
+    texlive-xetex \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

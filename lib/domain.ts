@@ -49,7 +49,9 @@ export const TextNodeSchema = z.strictObject({
 export const CitationNodeSchema = z.strictObject({
   type: z.literal("citation"),
   anchorId: z.string().min(1),
-  referenceIds: z.array(z.string().min(1)).min(1),
+  // GROBID can identify a citation callout without resolving its bibliography target.
+  // Keeping an empty target list preserves the callout without inventing a fake reference.
+  referenceIds: z.array(z.string().min(1)),
   raw: z.string(),
   coordinates: z.string().optional(),
 });
@@ -69,6 +71,7 @@ export type Sentence = z.infer<typeof SentenceSchema>;
 
 export const ParagraphSchema = z.strictObject({
   id: z.string().min(1),
+  kind: z.enum(["prose", "code"]).default("prose"),
   sentences: z.array(SentenceSchema),
 });
 export type Paragraph = z.infer<typeof ParagraphSchema>;
@@ -107,6 +110,7 @@ export const PaperSchema = z.strictObject({
   abstract: z.array(ParagraphSchema),
   sections: z.array(SectionSchema),
   references: z.array(ReferenceRecordSchema),
+  identifiers: z.record(z.string(), z.string()).default({}),
   warnings: z.array(ParseWarningSchema),
   citationStyle: z.strictObject({
     family: z.enum(["numeric", "author-date", "unknown"]),
@@ -118,6 +122,7 @@ export const PaperSchema = z.strictObject({
     parserVersion: z.string(),
     sourceSha256: z.string(),
     parsedAt: z.string().datetime(),
+    recoveredPseudoHeadings: z.number().int().nonnegative().default(0),
   }),
 });
 export type Paper = z.infer<typeof PaperSchema>;
@@ -186,6 +191,9 @@ export const AddCitationOperationSchema = z.strictObject({
   type: z.literal("add-citation"),
   sentenceId: z.string(),
   source: WorkSourceSchema,
+  claimText: z.string().min(1).optional(),
+  rationale: z.string().min(1).optional(),
+  evidence: z.string().min(1).optional(),
 });
 
 export const AddSourcedSentenceOperationSchema = z.strictObject({
@@ -243,7 +251,30 @@ export function sentenceText(sentence: Sentence): string {
     .map((node) => node.value)
     .join("")
     .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
     .trim();
+}
+
+export type InlineGroup =
+  | { type: "text"; value: string; key: string }
+  | { type: "citation"; citations: CitationNode[]; key: string };
+
+/** Consecutive TEI citation callouts form one visual/CSL citation cluster. */
+export function groupInlineNodes(nodes: InlineNode[]): InlineGroup[] {
+  const groups: InlineGroup[] = [];
+  nodes.forEach((node, index) => {
+    if (node.type === "text") {
+      groups.push({ type: "text", value: node.value, key: `text-${index}` });
+      return;
+    }
+    const previous = groups.at(-1);
+    if (previous?.type === "citation") {
+      previous.citations.push(node);
+      return;
+    }
+    groups.push({ type: "citation", citations: [node], key: node.anchorId });
+  });
+  return groups;
 }
 
 export function sentenceCitationIds(sentence: Sentence): string[] {

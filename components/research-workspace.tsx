@@ -51,7 +51,7 @@ export function ResearchWorkspace() {
     await mutateSnapshot(
       `/api/documents/${snapshot.id}/review`,
       { method: "POST" },
-      "Searching both academic indexes and checking cited claims…",
+      "Resolving cited works, searching both academic indexes, and checking claim evidence…",
       "review",
     );
   };
@@ -122,6 +122,7 @@ export function ResearchWorkspace() {
       URL.revokeObjectURL(url);
     } catch (exportError) {
       setError(messageFrom(exportError));
+      setMobileView("paper");
     } finally {
       setBusyLabel(null);
     }
@@ -273,7 +274,12 @@ function apiMessage(payload: unknown): string {
   if (typeof error !== "object" || error === null || !("message" in error)) {
     return "The operation could not be completed.";
   }
-  return String((error as { message: unknown }).message);
+  const record = error as { message: unknown; details?: unknown };
+  const message = String(record.message);
+  const details = typeof record.details === "string"
+    ? record.details.replace(/\s+/g, " ").slice(0, 320)
+    : "";
+  return details ? `${message} Technical detail: ${details}` : message;
 }
 
 function messageFrom(error: unknown): string {

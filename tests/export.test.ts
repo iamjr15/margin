@@ -29,4 +29,35 @@ describe("Pandoc export", () => {
     expect(markdown).toContain("$\\varphi$ $\\in$ $\\Xi$");
     expect(markdown).toContain("$\\geq$ $\\pi$");
   });
+
+  it("escapes literal at-signs while keeping only structured citation nodes active", () => {
+    const paper = projectTeiToPaper(
+      readFileSync(new URL("./fixtures/numeric-paper.tei.xml", import.meta.url), "utf8"),
+      "abc123",
+    );
+    const sentence = paper.sections[0]!.paragraphs[0]!.sentences[1]!;
+    sentence.nodes = [
+      { type: "text", value: "Use @pytest.fixture with " },
+      { type: "citation", anchorId: "unlinked-code-like", referenceIds: [], raw: "[start, end]" },
+    ];
+
+    const markdown = serializePaperToPandoc(paper);
+    expect(markdown).toContain("\\@pytest.fixture");
+    expect(markdown).toContain("\\[start, end\\]");
+    expect(markdown).not.toContain("@pytest.fixture not found");
+  });
+
+  it("serializes extracted code as fenced code instead of manuscript headings", () => {
+    const paper = projectTeiToPaper(
+      readFileSync(new URL("./fixtures/numeric-paper.tei.xml", import.meta.url), "utf8"),
+      "abc123",
+    );
+    const paragraph = paper.sections[0]!.paragraphs[0]!;
+    paragraph.kind = "code";
+    paragraph.sentences[0]!.nodes = [{ type: "text", value: "@pytest.fixture\nreturn value" }];
+
+    const markdown = serializePaperToPandoc(paper);
+    expect(markdown).toContain("~~~\n@pytest.fixture\nreturn value");
+    expect(markdown).not.toContain("\\@pytest.fixture");
+  });
 });

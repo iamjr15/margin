@@ -1,13 +1,15 @@
 "use client";
 
 import { Check, ExternalLink, Plus, Quote, X } from "lucide-react";
-import type { EditProposal } from "@/lib/domain";
+import { sentenceText, type EditProposal, type Paper } from "@/lib/domain";
 
 export function ProposalCard({
   proposal,
+  paper,
   onDecide,
 }: {
   proposal: EditProposal;
+  paper: Paper;
   onDecide: (decision: "approve" | "reject") => Promise<void>;
 }) {
   const pending = proposal.status === "pending";
@@ -32,6 +34,7 @@ export function ProposalCard({
             );
           }
           if (operation.type === "add-citation") {
+            const claim = operation.claimText ?? findSentenceText(paper, operation.sentenceId);
             return (
               <div className="operation-source" key={`${operation.sentenceId}-${operation.source.id}`}>
                 <p className="operation-label"><Plus aria-hidden="true" size={14} /> Add verified citation</p>
@@ -40,6 +43,24 @@ export function ProposalCard({
                   <ExternalLink aria-hidden="true" size={13} />
                 </a>
                 <span>{operation.source.providers.join(" + ")} · {operation.source.retrievalMethod.replaceAll("-", " ")}</span>
+                <div className="operation-reasoning">
+                  {claim ? (
+                    <div>
+                      <strong>Claim receiving the citation</strong>
+                      <blockquote>“{claim}”</blockquote>
+                    </div>
+                  ) : null}
+                  <div>
+                    <strong>Why this source</strong>
+                    <p>{operation.rationale ?? "This proposal predates claim-level evidence. Reject it and create a new proposal to see a validated explanation."}</p>
+                  </div>
+                  {operation.evidence ? (
+                    <div>
+                      <strong>Matched abstract evidence</strong>
+                      <blockquote>“{operation.evidence}”</blockquote>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           }
@@ -72,4 +93,12 @@ export function ProposalCard({
       )}
     </article>
   );
+}
+
+function findSentenceText(paper: Paper, sentenceId: string): string | undefined {
+  const sentence = [
+    ...paper.abstract,
+    ...paper.sections.flatMap((section) => section.paragraphs),
+  ].flatMap((paragraph) => paragraph.sentences).find((candidate) => candidate.id === sentenceId);
+  return sentence ? sentenceText(sentence) : undefined;
 }

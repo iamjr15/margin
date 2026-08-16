@@ -10,7 +10,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DocumentSnapshot, ReviewFinding, WorkSource } from "@/lib/domain";
 import { ProposalCard } from "@/components/proposal-card";
 
@@ -123,7 +123,7 @@ export function ReviewPane({ snapshot, busyLabel, error, onReview, onDecide }: P
             <>
               <div className="thread-anchor" ref={proposalAnchor} />
               <article className="user-turn compact"><p>{snapshot.proposal.command}</p></article>
-              <AssistantTurn><ProposalCard onDecide={onDecide} proposal={snapshot.proposal} /></AssistantTurn>
+              <AssistantTurn><ProposalCard onDecide={onDecide} paper={paper} proposal={snapshot.proposal} /></AssistantTurn>
             </>
           ) : null}
         </div>
@@ -150,6 +150,9 @@ function ParseTrace({ snapshot }: { snapshot: DocumentSnapshot }) {
       <div className="trace-body">
         <p><span>GROBID</span> Structured the PDF into TEI and stable sentence IDs.</p>
         <p><span>CSL-JSON</span> Normalized {paper.references.length} bibliography records.</p>
+        {paper.provenance.recoveredPseudoHeadings ? (
+          <p><span>Recovery</span> Preserved {paper.provenance.recoveredPseudoHeadings} parser-created pseudo-headings as text/code blocks.</p>
+        ) : null}
         <p><span>Integrity</span> Retained {paper.warnings.length} visible parse warning{paper.warnings.length === 1 ? "" : "s"}.</p>
       </div>
     </details>
@@ -172,10 +175,42 @@ function ProviderTrace({ snapshot }: { snapshot: DocumentSnapshot }) {
 }
 
 function BusyState({ label }: { label: string }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    setElapsedSeconds(0);
+    const startedAt = Date.now();
+    const timer = window.setInterval(
+      () => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000)),
+      1_000,
+    );
+    return () => window.clearInterval(timer);
+  }, [label]);
+  const reviewSteps = /academic|cited|claim|evidence/i.test(label)
+    ? [
+        "Batch-resolve cited DOI and provider IDs",
+        "Search Semantic Scholar and OpenAlex",
+        "Remove duplicates and the uploaded paper",
+        "Check claims against available abstracts",
+        "Validate source IDs and quoted evidence",
+      ]
+    : [];
+  const currentStep = Math.min(reviewSteps.length - 1, Math.floor(elapsedSeconds / 5));
   return (
     <div className="thread-working" aria-live="polite">
       <span aria-hidden="true" className="working-spinner" />
-      <div><strong>Working</strong><p>{label}</p></div>
+      <div>
+        <strong>Working · {elapsedSeconds}s</strong>
+        <p>{label}</p>
+        {reviewSteps.length ? (
+          <ol className="review-progress-steps">
+            {reviewSteps.map((step, index) => (
+              <li data-state={index < currentStep ? "complete" : index === currentStep ? "active" : "queued"} key={step}>
+                <span aria-hidden="true" />{step}
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -45,6 +45,19 @@ describe("citation-safe edits", () => {
     expect(revisedSentence && sentenceCitationIds(revisedSentence)).toContain("doi:10.1000/new");
   });
 
+  it("rejects citation evidence that is not an exact source-abstract excerpt", () => {
+    const original = paper();
+    const sentence = original.sections[0]?.paragraphs[0]?.sentences[1];
+    expect(() => applyProposal(original, [{
+      type: "add-citation",
+      sentenceId: sentence?.id ?? "",
+      source: verifiedSource(),
+      claimText: sentence ? sentenceText(sentence) : "Target claim",
+      rationale: "The source discusses the same evidence system.",
+      evidence: "This excerpt was invented.",
+    }])).toThrow(/exact excerpt/);
+  });
+
   it("rejects silent removal of an existing anchor", () => {
     const original = paper();
     const broken = structuredClone(original);

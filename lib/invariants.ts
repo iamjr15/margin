@@ -11,6 +11,23 @@ export function assertProposalOperations(operations: EditOperation[]): void {
       continue;
     }
     const sources = operation.type === "add-citation" ? [operation.source] : operation.sources;
+    if (operation.type === "add-citation") {
+      const explanation = [operation.claimText, operation.rationale, operation.evidence];
+      if (explanation.some(Boolean) && explanation.some((value) => !value?.trim())) {
+        throw new AppError(
+          "incomplete_citation_reasoning",
+          "A citation explanation must include the target claim, rationale, and abstract evidence.",
+          422,
+        );
+      }
+      if (operation.evidence && !operation.source.abstract?.includes(operation.evidence)) {
+        throw new AppError(
+          "invalid_citation_evidence",
+          "Proposed citation evidence must be an exact excerpt from the source abstract.",
+          422,
+        );
+      }
+    }
     for (const source of sources) {
       if (!source.url || Object.keys(source.providerIds).length === 0) {
         throw new AppError(

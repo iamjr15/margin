@@ -1,6 +1,6 @@
 # System design
 
-The assessment gives highest weight to two designs: citation parsing and the review/editing agent. This document describes the implemented path, its invariants, and the boundaries where uncertainty remains visible.
+I have given the highest weight to two designs: citation parsing and the review/editing agent. This document describes the implemented path, its invariants, and the boundaries where uncertainty remains visible.
 
 ## Design principles
 
@@ -17,47 +17,29 @@ The assessment gives highest weight to two designs: citation parsing and the rev
 
 ## Pipeline
 
-```mermaid
-flowchart TD
-  U[PDF upload] --> G0[Guard MIME, size, PDF signature]
-  G0 --> H[SHA-256 + artifact storage]
-  H --> G1[GROBID processFulltextDocument]
-  G1 --> T[TEI XML]
-  T --> B[Read teiHeader + text/body + back/listBibl]
-  B --> R[Project biblStruct entries]
-  R --> CSL[Canonical CSL-JSON records]
-  B --> S[Project divisions, paragraphs, sentences]
-  S --> A[Bind bibr targets to CitationNodes]
-  CSL --> I[Paper IR]
-  A --> I
-  I --> D[Detect marker family]
-  D -->|numeric| IEEE[IEEE CSL]
-  D -->|author-date| APA[APA CSL]
-  D -->|low confidence| PICK[Visible selector]
-  I --> W[Warnings + unresolved materialization]
-```
+![Citation parsing pipeline](docs/system-design/parsing-pipeline.svg)
 
 ## Step-by-step algorithm
 
 ### Step 1 — validate and preserve source provenance
 
-The upload route accepts one `paper` part, enforces PDF type/signature and `MAX_PDF_BYTES` (20 MB by default), hashes the exact bytes, creates a document row, and writes the original file under the document directory. The hash and original artifact make later results attributable to a specific input.
+I implemented the upload route to accept one `paper` part, enforce PDF type/signature and `MAX_PDF_BYTES` (20 MB by default), hash the exact bytes, create a document row, and write the original file under the document directory. The hash and original artifact make later results attributable to a specific input.
 
 ### Step 2 — extract scholarly text and layout structure
 
-The parser calls GROBID's `processFulltextDocument` rather than attempting to infer scholarly layout with application regex. It requests:
+I call GROBID's `processFulltextDocument` rather than attempting to infer scholarly layout with application regex. I request:
 
 - generated XML IDs;
 - sentence segmentation;
 - raw reference strings;
-- reference and bibliography coordinates; and
+- reference, bibliography, heading, paragraph, and sentence coordinates; and
 - no external consolidation, because provider lookup is handled behind explicit application adapters.
 
 GROBID performs layout-aware PDF tokenization, header/body segmentation, bibliography-zone detection, entry segmentation, and bibliographic field parsing. The returned TEI is retained alongside the source PDF for debugging.
 
 ### Step 3 — locate and segment the bibliography
 
-The projector reads only TEI `listBibl > biblStruct` entries from the back matter. Header metadata is not accidentally treated as a cited work. One `biblStruct` becomes one `ReferenceRecord` with:
+I made the projector read only TEI `listBibl > biblStruct` entries from the back matter, so header metadata cannot accidentally become a cited work. Normally one `biblStruct` becomes one `ReferenceRecord` with:
 
 - stable TEI ID;
 - original raw entry text;
@@ -66,11 +48,11 @@ The projector reads only TEI `listBibl > biblStruct` entries from the back matte
 - provider IDs when known; and
 - a canonical CSL item.
 
-This is deterministic tree traversal. It does not split a reference list on line breaks or assume that every entry begins with `[n]`.
+This is deterministic tree traversal. It does not split a reference list on line breaks or assume that every entry begins with `[n]`. A narrow recovery handles GROBID rows that provably contain two raw references: a year-to-new-author boundary splits the raw entry, each child gets a stable derived ID, and author/year callouts are relinked only when the match is unique.
 
 ### Step 4 — normalize each entry to CSL-JSON
 
-The projector maps TEI fields into CSL:
+I map TEI fields into CSL as follows:
 
 | TEI | CSL-JSON |
 |---|---|
@@ -84,11 +66,13 @@ The projector maps TEI fields into CSL:
 
 CSL item IDs are stable internal reference IDs. Provider lookups may enrich the same model later, but no downstream component owns a second bibliography schema.
 
-Confidence reflects field evidence: title, author, year, and DOI contribute independently. Low confidence is displayed; an entry is not dropped because some fields are missing.
+Confidence reflects field evidence: title, author, year, and DOI contribute independently. Low confidence is displayed; an entry is not dropped because some fields are missing. Raw text also repairs two observable GROBID failure modes: trailing authors leaked into a title, and an author list truncated or shifted before that title. Recovery requires an exact cleaned-title boundary and a tightly bounded author-count difference.
 
 ### Step 5 — project document structure
 
-TEI `div`, `head`, `p`, and `s` elements become `Section`, `Paragraph`, and `Sentence` records. Each sentence contains an ordered node list:
+TEI `div`, `head`, `p`, and `s` elements become `Section`, `Paragraph`, and `Sentence` records. Paragraphs are typed as prose or code. Hierarchy uses `head@n` when present, then deterministic Arabic/Roman/alphabetic outline rules. Coordinate-consistent repeated unnumbered heads are treated as running headers. Lowercase hyphen fragments rejoin the previous prose token; inline Roman major headings are recovered only from uppercase heading prefixes; and alphabetic markers remain subsections even when `C`, `D`, `L`, or `M` are also Roman digits. Back matter is traversed through unheaded TEI wrappers, standard acknowledgement blocks are flattened before outline recovery, and nested `annex` children become appendices.
+
+Parser-created heads containing shell return arrows, patch templates, JSON/tool schemas, or test code are preserved inside the nearest real section rather than promoted to headings or discarded. A narrow appendix-heading repair splits the observed GROBID form `F … F.1 …` into a level-one parent and level-two child; the rule requires the repeated appendix letter and numeric child marker, so ordinary headings are untouched. Citation-shaped TEI fragments are accepted only when they are linked or match a complete numeric/author-date marker; surname particles, array dimensions, and punctuation fragments are demoted to text. Finally, bibliography-zone rows with strong source-code syntax are rejected while URL-only `Available:` rows remain valid CSL records with their line-wrapped URL repaired. Each sentence contains an ordered node list:
 
 ```ts
 type SentenceNode =
@@ -103,6 +87,8 @@ type SentenceNode =
 
 This node model is the central round-trip decision. Rendering a numeric marker is a view concern; preserving the semantic link is a domain concern.
 
+The manuscript renderer groups consecutive code paragraphs into one technical artifact instead of producing a card per extracted paragraph. Large artifacts are collapsed by default, classified as diffs, tool definitions, feature prompts, execution traces, or mixed agent/benchmark appendices, and capped to an internal scroll region when opened. Repetitive identifier-only sequences render as a compact count-labelled list. This is a presentation transform only: the canonical IR and exports retain the extracted content and source order.
+
 ### Step 6 — locate and bind in-text markers
 
 For each TEI `ref[type=bibr]` encountered inside a sentence, the projector:
@@ -113,7 +99,7 @@ For each TEI `ref[type=bibr]` encountered inside a sentence, the projector:
 4. binds them to the reference library; and
 5. retains the raw marker for auditability.
 
-If a target has no bibliography entry, the projector creates an unresolved reference record and warning. The marker therefore remains visible and structurally valid instead of disappearing.
+If a target has no bibliography entry, the citation node retains an empty `referenceIds` list and the exact raw marker. The marker remains visible and structurally valid, but the system does not invent a bibliography item. Deterministic numeric or author-year recovery may link it only when one existing reference matches uniquely.
 
 ### Step 7 — detect or select the citation style
 
@@ -124,7 +110,7 @@ Marker shapes, not formatted bibliography strings, vote for a family:
 
 The winning family must account for at least 60% of observed markers. Otherwise the family is `unknown`, confidence is shown, and APA is only a temporary default. The citations UI always exposes an APA/IEEE selector; changing it creates another version rather than mutating history.
 
-This selector is intentionally narrow for the assessment. Adding another CSL style means vendoring its `.csl` file and extending the allowed style IDs, not writing a formatter.
+I intentionally kept this selector narrow for the assessment. Adding another CSL style means vendoring its `.csl` file and extending the allowed style IDs, not writing a formatter.
 
 ### Step 8 — surface failure modes
 
@@ -134,41 +120,36 @@ This selector is intentionally narrow for the assessment. Adding another CSL sty
 | GROBID unavailable | Retry one saturation response, then return typed 503 |
 | No body | `missing_body` warning |
 | No reference list | `missing_reference_list` warning |
-| Missing in-text target | Unresolved CSL record + `missing_reference_target` warning |
+| Missing in-text target | Verbatim unlinked citation node + `unlinked_citations` warning |
+| Parser promotes tool/code text to headings | Recover as prose/code and record recovery count in provenance |
+| Running header or split lowercase token becomes a heading | Use repeated coordinates or deterministic fragment repair, then keep its prose in source order |
+| Roman heading is embedded in a sentence | Recover an uppercase major heading and reparent following alphabetic subsections |
+| Back-matter wrapper has no direct heading | Traverse semantic children; flatten standard acknowledgement blocks; retain nested appendices |
+| GROBID bibliography zone reaches source code | Reject rows with strong preprocessor/declaration/function syntax; do not expose them as references |
+| URL-only reference is line-wrapped | Repair the explicit `Available:` URL and keep a title-less, parsed CSL item |
+| Parent and child appendix headings merged | Split only when one repeated appendix letter and numeric child marker match |
+| Long code, diff, prompt, trace, or benchmark payload | Preserve in IR/export; group, label, collapse, and internally scroll in the manuscript view |
+| Two references merged into one TEI row | Split only at a strict raw-reference boundary and relink uniquely |
 | Partially parsed entry | Original raw string remains visible with confidence |
 | Mixed/unknown marker style | `unknown` family + confidence + manual CSL selector |
 
 ## Intermediate representation
 
-```mermaid
-classDiagram
-  class Paper {
-    title
-    authors[]
-    abstract[]
-    sections[]
-    references[]
-    citationStyle
-    warnings[]
-    provenance
-  }
-  class Section { id; title; level; paragraphs[] }
-  class Paragraph { id; sentences[] }
-  class Sentence { id; nodes[] }
-  class CitationNode { anchorId; referenceIds[]; raw }
-  class ReferenceRecord { id; csl; raw; confidence; status; providerIds }
-  Paper --> Section
-  Section --> Paragraph
-  Paragraph --> Sentence
-  Sentence --> CitationNode
-  CitationNode --> ReferenceRecord
-```
+![Canonical paper intermediate representation](docs/system-design/paper-ir.svg)
 
 All schemas are strict Zod objects. Persisted JSON is parsed again on reads, so corrupt or shape-drifting state fails near the repository boundary.
 
 ## Why GROBID + a deterministic projector
 
-The application does not outsource the whole problem to a black box. GROBID owns the hard layout/statistical parsing work for which it is designed. The small projector owns application semantics: what counts as a reference, how TEI targets bind, how CSL is shaped, how warnings materialize, and what IDs edits must preserve. Fixtures can therefore test the domain contract without running a 1.7 GB parser container.
+I did not outsource the whole problem to a black box. I use GROBID for the hard layout/statistical parsing work it is designed for, while my small projector owns application semantics: what counts as a reference, how TEI targets bind, how CSL is shaped, how warnings materialize, and what IDs edits must preserve. This separation lets me test the domain contract with fixtures without running a 1.7 GB parser container.
+
+### Why not replace GROBID with Docling, Marker, or MinerU?
+
+I chose the parser around the assessment's highest-risk requirement rather than a generic PDF leaderboard. GROBID's full-text endpoint emits `biblStruct` bibliography records and `ref[type=bibr]` targets that link in-text callouts to those records. That semantic edge is what my immutable citation-anchor model consumes.
+
+Docling has broader document-understanding primitives—reading order, tables, formulas, pictures, OCR, and multiple export formats—and is the best future additive sidecar for layout-rich blocks. Marker and MinerU likewise target high-quality PDF-to-Markdown/JSON conversion and can improve math/table/code reconstruction. Their public contracts do not replace GROBID's linked citation-context TEI, so making any of them the only parser would trade away the assignment's core citation guarantee. A production extension would run GROBID and Docling in parallel, join blocks by page coordinates, keep GROBID authoritative for citation identity, and use Docling only for richer block content. The current 48-hour slice avoids that second model/runtime because the five-paper corpus shows the citation path is robust without it.
+
+Primary references: [GROBID introduction](https://grobid.readthedocs.io/en/latest/Introduction/), [GROBID coordinates](https://grobid.readthedocs.io/en/latest/Coordinates-in-PDF/), [Docling](https://github.com/docling-project/docling), [Marker](https://github.com/datalab-to/marker), and [MinerU](https://github.com/opendatalab/MinerU).
 
 ## Parsing limitations
 
@@ -180,22 +161,9 @@ This IR reconstructs scholarly semantics, not original page design. Figures, tab
 
 ## Trust boundary
 
-```mermaid
-flowchart LR
-  P[Paper IR] --> O[Deterministic orchestrator]
-  O --> S2[Semantic Scholar adapter]
-  O --> OA[OpenAlex adapter]
-  S2 --> N[Normalized sources]
-  OA --> N
-  N --> L[Model with structured schema]
-  L --> V[Deterministic validator]
-  V --> UI[Finding or proposal]
-  UI --> H{Human decision}
-  H -->|approve| I[Integrity checks + transaction]
-  H -->|reject| X[No paper mutation]
-```
+![Review and editing trust boundary](docs/system-design/trust-boundary.svg)
 
-The model is inside the trust boundary but not at its edge. It cannot call arbitrary tools, invent metadata that becomes CSL, or replace the paper wholesale.
+I place the model inside the trust boundary but never at its edge. I do not let it call arbitrary tools, invent metadata that becomes CSL, or replace the paper wholesale.
 
 ## Scholarly provider boundary
 
@@ -225,27 +193,29 @@ Calls have 20-second timeouts, at most three attempts, exponential backoff with 
 2. Run Semantic Scholar search, Semantic Scholar seed recommendations (when cited S2 IDs exist), and OpenAlex semantic search concurrently.
 3. Merge/deduplicate results.
 4. Exclude DOI/title identities already in the paper.
-5. Pass only a bounded candidate set to the reviewer.
+5. Mark only the remaining discovery IDs as eligible for missing-work suggestions.
+6. Pass only a bounded candidate set to the reviewer.
 
 Retrieval method labels remain visible (`exact-id`, `title-search`, `semantic-search`, `seed-recommendation`). A search result is described as a candidate, not a proven omission.
 
 ## Peer-review execution
 
-The reviewer examines at most ten cited claims and three uncited claims in one run. This makes latency, prompt size, and reviewer scope predictable.
+I bound each review to at most ten cited claims and three uncited claims, which keeps latency, prompt size, and reviewer scope predictable.
 
-The model receives:
+I give the model:
 
 - immutable sentence IDs and claim text;
 - source IDs already allowed for each cited claim;
 - candidate source IDs for missing work; and
 - provider-supplied title, year, and abstract only.
 
-It returns a strict schema with citation matches and missing-work candidates. Application code then rejects a finding unless:
+It returns a strict schema with citation matches and missing-work candidates. Application code then rejects or deduplicates a finding unless:
 
 1. its sentence exists in the supplied claim set;
 2. its source exists in the supplied catalog;
 3. a citation-match source was actually attached to that claim; and
 4. non-insufficient evidence is an exact contiguous substring of the provider abstract.
+5. a missing-work source is on the discovery-only allowlist, is not the uploaded paper, and is not already cited.
 
 Verdicts are deliberately asymmetric:
 
@@ -269,7 +239,11 @@ A first structured call maps a command to one of four intents and a supplied sec
 | `ADD_SOURCED_CLAIM` | Select one provider abstract and author one conservative cited sentence |
 | `UNSUPPORTED` | Return a visible 422; do not guess |
 
-The planner cannot return arbitrary JavaScript, SQL, document patches, or reference metadata.
+I do not let the planner return arbitrary JavaScript, SQL, document patches, or reference metadata.
+
+For `ADD_CITATIONS`, execution considers up to eight uncited claims rather than overfitting to the first two sentences. A compact, round-robin keyword query stays below provider URL/query limits while representing claims from across the section. Results are normalized and deduplicated, then exclude existing references and the uploaded work by DOI or Unicode-normalized title; shortened titles additionally require an overlapping author family name, with both `Family, Given` and `Given Family` forms supported.
+
+The matcher receives only provider-hydrated abstracts. It may return at most one source per claim, but application code accepts a match only when one exact abstract sentence covers a meaningful fraction of the claim's non-generic terms. Same-topic overlap is insufficient. At most two validated matches become operations; if none clear the threshold, the request fails visibly instead of proposing a citation.
 
 ### Typed operation log
 
@@ -285,6 +259,9 @@ type EditOperation =
       type: "add-citation";
       sentenceId: string;
       source: WorkSource;
+      claimText: string;
+      rationale: string;
+      evidence: string; // exact contiguous sentence from source.abstract
     }
   | {
       type: "add-sourced-sentence";
@@ -305,6 +282,7 @@ There are safeguards at three moments.
 
 - rewrites cannot be empty;
 - added sources require a link and at least one provider ID; and
+- citation explanations are all-or-none and their evidence must be an exact source-abstract substring;
 - new claims require provider sources and model access.
 
 ### Application
@@ -322,20 +300,7 @@ The proposal also stores `baseVersionId`. Approval begins an immediate SQLite tr
 
 ## Persistence and state transitions
 
-```mermaid
-stateDiagram-v2
-  [*] --> UPLOADED
-  UPLOADED --> PARSING
-  PARSING --> READY
-  PARSING --> NEEDS_OCR
-  PARSING --> FAILED
-  READY --> REVIEWING
-  REVIEWING --> READY
-  READY --> EDITING
-  EDITING --> READY: proposal waiting
-  READY --> EXPORTING
-  EXPORTING --> READY
-```
+![Document workflow state transitions](docs/system-design/state-transitions.svg)
 
 SQLite tables:
 
@@ -356,7 +321,7 @@ WAL mode, foreign keys, and a five-second busy timeout are enabled. This is suff
 3. Write every canonical CSL item to `references.json`.
 4. Select the stored/detected official CSL style.
 5. Run Pandoc citeproc to produce standalone TeX.
-6. Typeset PDF with Tectonic when present, otherwise `pdflatex`.
+6. Typeset PDF with XeLaTeX when present, otherwise Tectonic or `pdflatex`; the container includes the recommended TeX font metrics required by Hyperref.
 7. Emit a validation report with anchor count, reference count, unresolved IDs, parse warnings, style, document ID, and version ID.
 8. ZIP PDF, TeX, CSL-JSON, `.csl`, report, and readme.
 
@@ -369,7 +334,7 @@ The subprocess has a 90-second timeout. Common Unicode math symbols are serializ
 | Upload | 20 MB default limit, PDF signature/type, source hash |
 | GROBID | Compose health gate, 120-second request timeout, one saturation retry |
 | Providers | Parallel isolation, timeout, bounded backoff, cache, optional keys |
-| OpenAI | 60-second client timeout, one SDK retry, strict output schemas |
+| OpenAI | Configurable 60-second default deadline, no SDK retry, strict output schemas, deterministic fallback |
 | Mutation | One active proposal in UI, base-version conflict check, transaction |
 | Export | Integrity pass, process timeout, validation artifact |
 | Secrets | Server-only env names; `.env*` ignored except example |
@@ -387,4 +352,4 @@ The clean boundaries allow a production evolution without rewriting the domain m
 - authentication and document ownership guard every route.
 - OCR becomes a separate ingestion adapter that still emits TEI or the same paper IR.
 
-The assessment implementation does not add those systems prematurely; it keeps the seams needed to add them.
+I did not add those systems prematurely; I kept the seams needed to introduce them later.
