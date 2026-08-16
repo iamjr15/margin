@@ -3,8 +3,6 @@
 import { ArrowUp, FileSearch, FileText, LockKeyhole, Plus, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
 
-const CAPABILITIES = ["Peer review", "Citation check", "Safe revision", "PDF export"];
-
 export function UploadSurface({
   busyLabel,
   error,
@@ -28,9 +26,6 @@ export function UploadSurface({
         <p className="launch-context">Local workspace · citation-safe</p>
         <h1><span>Margin</span> ready to review</h1>
         <p>Bring a research paper. Margin will parse its citation graph, review the evidence, and keep every edit under your control.</p>
-        <div aria-label="Available workflows" className="capability-grid">
-          {CAPABILITIES.map((capability) => <span key={capability}>{capability}</span>)}
-        </div>
       </div>
 
       <div

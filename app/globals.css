@@ -289,20 +289,6 @@ button { color: inherit; }
 .upload-intro h1 span { font-weight: 720; }
 .upload-intro > p:last-of-type { max-width: 520px; margin: 13px auto 0; color: var(--ink-soft); font-size: 13px; line-height: 1.55; text-wrap: pretty; }
 
-.capability-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  width: min(100%, 430px);
-  margin: 22px auto 0;
-  border-radius: 17px;
-  background: #fafaf9;
-  padding: 4px;
-}
-
-.capability-grid span { min-height: 34px; border-radius: 13px; background: white; color: var(--ink-soft); padding: 9px 12px; font-size: 10px; }
-.capability-grid span::before { color: var(--accent); content: "✦"; margin-right: 7px; }
-
 .upload-composer {
   width: min(100%, 610px);
   min-height: 132px;
@@ -594,8 +580,6 @@ button { color: inherit; }
   .launch-spark { margin-bottom: 5px; }
   .upload-intro h1 { font-size: clamp(29px, 9vw, 38px); }
   .upload-intro > p:last-of-type { font-size: 12px; }
-  .capability-grid { margin-top: 18px; }
-  .capability-grid span { min-height: 40px; padding-block: 11px; }
   .upload-composer { min-height: 125px; margin-top: auto; }
   .upload-prompt { min-height: 65px; }
   .upload-footnote { align-items: flex-start; margin-bottom: 2px; }
@@ -653,7 +637,6 @@ button { color: inherit; }
 }
 
 @media (max-width: 390px) {
-  .capability-grid { grid-template-columns: 1fr; max-height: 93px; overflow-y: auto; }
   .upload-intro > p:last-of-type { display: none; }
   .thread-meta span:last-child { display: none; }
 }
